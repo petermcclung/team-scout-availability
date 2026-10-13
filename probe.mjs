@@ -213,10 +213,11 @@ function minutesInCentralMonthSoFar(monthKey, now, sinceIso) {
   const nextGuess = Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 1, 0, 0);
   let end = nextGuess - 12 * 3600_000;
   while (centralMonth(new Date(end)) === monthKey) end += 60_000;
-  const since = Date.parse(sinceIso);
+  const since = Math.floor(Date.parse(sinceIso) / 60_000) * 60_000;
   const from = Math.max(start, since);
   const to = Math.min(end, now.getTime());
-  return { windowMinutes: Math.max(0, Math.floor((to - from) / 60_000)), fullMonth: since <= start && now.getTime() >= end };
+  // Minutes touched by the window, counting the minute measuring began.
+  return { windowMinutes: Math.max(0, Math.ceil((to - from) / 60_000)), fullMonth: since <= start && now.getTime() >= end };
 }
 
 export function buildSummary(dayDocs, now, firstSampleIso) {
@@ -236,7 +237,7 @@ export function buildSummary(dayDocs, now, firstSampleIso) {
       measuredMinutes: row.measuredMinutes,
       unavailableMinutes: row.unavailableMinutes,
       availabilityPercent: availabilityPercent(row),
-      coveragePercent: w.windowMinutes ? Math.floor((row.measuredMinutes / w.windowMinutes) * 1000) / 10 : null,
+      coveragePercent: w.windowMinutes ? Math.min(100, Math.floor((row.measuredMinutes / w.windowMinutes) * 1000) / 10) : null,
     };
   };
   return {

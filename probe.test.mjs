@@ -60,3 +60,10 @@ test("summary reports this month so far and no last month before November", () =
   assert.equal(s.thisMonth.fullMonthMeasured, false);
   assert.equal(s.lastMonth, null);
 });
+
+test("coverage counts the minute measuring began and never exceeds 100", () => {
+  const docs = [day("2026-10-13", [...allUp(894), ...allUp(895), ...allUp(896), ...allUp(897), ...allUp(898)])];
+  const s = buildSummary(docs, new Date("2026-10-13T14:58:02Z"), "2026-10-13T14:54:00Z");
+  assert.equal(s.thisMonth.measuredMinutes, 5);
+  assert.equal(s.thisMonth.coveragePercent, 100);
+});
