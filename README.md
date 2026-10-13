@@ -4,20 +4,22 @@ An independent record of whether Team Scout is up, written from outside Team Sco
 
 ## What is checked
 
-Every minute the probe runs, it checks four things a club depends on:
+Every minute the probe runs, it checks six things a club depends on, across the web app, the admin workspace and the mobile app's services:
 
 | Check | What has to happen |
 | --- | --- |
 | Sign-in | The sign-in page at app.teamscout.co loads and shows "Sign in" |
+| Admin workspace | An admin workspace address is served: a signed-out visit is sent to sign-in with the address kept |
 | Registration form | A live public registration form loads with its organization's name |
 | Organization site | An organization's public site loads with its name |
-| Data service | The sign-in service reports healthy and a data read answers |
+| App services | The web app's server functions that the mobile app calls answer (a call without sign-in is refused by the function itself) |
+| Data service | The data service the web and mobile apps share: the sign-in service reports healthy and a data read answers |
 
 A check fails when the answer is not a normal page (HTTP 200), the expected words are missing, or nothing comes back within 10 seconds. A failed check is tried again 15 seconds later; only a second failure is recorded as down.
 
 ## How availability is counted
 
-- A minute is **unavailable** when any of the four checks is down in that minute.
+- A minute is **unavailable** when any of the six checks is down in that minute.
 - **Availability** for a month = minutes up divided by minutes measured, rounded down to two decimals. Months are Central time.
 - **Coverage** = minutes measured divided by minutes in the month since measuring began. GitHub starts the scheduled runs, and on a busy day it can start one late; minutes no run covered are counted as not measured, never as up.
 

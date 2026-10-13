@@ -7,16 +7,19 @@
  * stop the record being written. One run takes a sample at the start of each
  * of the next five minutes; the schedule starts a run every five minutes.
  *
- * A sample checks four things a club uses:
+ * A sample checks six things a club uses:
  *   sign_in            the sign-in page renders
+ *   admin_workspace    an admin workspace address is served (sent to sign-in, address kept)
  *   registration_form  a live public registration form renders
  *   org_site           an organization's public site renders
- *   data_service       the data service answers (sign-in service health + a data read)
+ *   app_api            the web app's server functions the mobile app calls answer
+ *   data_service       the data service the web and mobile apps share answers
+ *                      (sign-in service health + a data read)
  *
  * A check fails when the answer is not HTTP 200, the page is missing its
  * expected text, or nothing comes back within 10 seconds. A failed check is
  * retried once after 15 seconds; only a failed retry is recorded as down.
- * A minute is "unavailable" when any of the four is down in that minute.
+ * A minute is "unavailable" when any of the six is down in that minute.
  *
  * Storage: data/YYYY/MM/YYYY-MM-DD.json per UTC day. Each target has a
  * 1,440-character string, one character per UTC minute:
@@ -64,6 +67,34 @@ export const TARGETS = [
     ],
   },
   {
+    // The admin workspace: a signed-out visit must be sent to sign-in with the
+    // workspace address kept, and the sign-in page must render.
+    key: "admin_workspace",
+    checks: [
+      {
+        url: "https://app.teamscout.co/christprepfootball/hub",
+        requireText: "Sign in",
+        requireFinalUrlIncludes: "redirect=%2Fchristprepfootball%2Fhub",
+      },
+    ],
+  },
+  {
+    // The web app's server functions the mobile app calls: a call with no
+    // sign-in must be answered (refused with 401) by the function itself.
+    key: "app_api",
+    checks: [
+      {
+        url: "https://app.teamscout.co/api/checkout/identity-token",
+        method: "POST",
+        body: "{}",
+        headers: { "content-type": "application/json" },
+        expectStatus: 401,
+        json: true,
+        requireText: "Missing bearer token",
+      },
+    ],
+  },
+  {
     key: "data_service",
     checks: [
       { url: `${SUPABASE_URL}/auth/v1/health`, headers: { apikey: ANON_KEY }, json: true },
@@ -86,11 +117,16 @@ async function fetchOnce(check) {
     const res = await fetch(check.url, {
       signal: controller.signal,
       redirect: "follow",
+      method: check.method || "GET",
+      body: check.body,
       headers: { "user-agent": "TeamScoutAvailabilityProbe/1.0 (+github.com/petermcclung/team-scout-availability)", ...(check.headers || {}) },
     });
     const body = await res.text();
     const ms = Date.now() - started;
-    if (res.status !== 200) return { ok: false, status: res.status, ms, error: `HTTP ${res.status}` };
+    if (res.status !== (check.expectStatus || 200)) return { ok: false, status: res.status, ms, error: `HTTP ${res.status}` };
+    if (check.requireFinalUrlIncludes && !res.url.includes(check.requireFinalUrlIncludes)) {
+      return { ok: false, status: res.status, ms, error: `ended at ${res.url}` };
+    }
     if (check.json) {
       try {
         JSON.parse(body);
@@ -245,7 +281,7 @@ export function buildSummary(dayDocs, now, firstSampleIso) {
     firstSampleAt: firstSampleIso,
     generatedAt: now.toISOString(),
     definition:
-      "A minute is unavailable when the sign-in page, a public registration form, an organization's public site or the data service fails twice, 15 seconds apart, within that minute. Availability = minutes up / minutes measured. Months are Central time.",
+      "A minute is unavailable when the sign-in page, the admin workspace, a public registration form, an organization's public site, the app's server functions or the data service fails twice, 15 seconds apart, within that minute. Availability = minutes up / minutes measured. Months are Central time.",
     thisMonth: describe(thisKey),
     lastMonth: describe(lastKey),
   };
