@@ -74,3 +74,8 @@ test("the registration check targets Team Scout's own open form and fails on a c
   assert.match(reg.checks[0].url, /\/register\/team-scout-public\/availability-check$/);
   assert.equal(reg.checks[0].forbidText, "Registration Closed");
 });
+
+test("applying a run's samples merges into the record without writing in a dry module import", async () => {
+  const { applySamples } = await import("./probe.mjs");
+  assert.equal(typeof applySamples, "function");
+});

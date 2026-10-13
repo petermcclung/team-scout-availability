@@ -35,12 +35,18 @@ jobs:
         run: |
           git config user.name "team-scout-availability-probe"
           git config user.email "probe@users.noreply.github.com"
-          git add data summary.json
-          if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
-          git commit -q -m "probe: $(date -u +%Y-%m-%dT%H:%MZ)"
-          for i in 1 2 3; do
-            git pull -q --rebase origin main && git push -q origin HEAD:main && exit 0
+          # Start from the latest record every attempt and re-apply this run's
+          # samples (kept in .run-samples.json, untracked), so an overlapping run
+          # never conflicts and no sample is lost.
+          for i in 1 2 3 4 5; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            node probe.mjs --apply .run-samples.json > /dev/null
+            git add data summary.json
+            if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
+            git commit -q -m "probe: $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push -q origin HEAD:main && exit 0
             sleep $((i * 5))
           done
-          echo "::error::could not push the record after three tries"
+          echo "::error::could not push the record after five tries"
           exit 1

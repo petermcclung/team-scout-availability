@@ -30,7 +30,9 @@
  *   "." not measured, "1" up, "0" down.
  * summary.json is recomputed on every run (months are Central time).
  *
- * Env: SAMPLES (default 5), DRY_RUN=1 (print, write nothing).
+ * Env: SAMPLES (default 5), DRY_RUN=1 (print, write nothing), SAMPLES_FILE.
+ * `node probe.mjs --apply [file]` merges a finished run's samples into the
+ * record as it stands now (the workflow uses it after resetting to main).
  */
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -332,28 +334,27 @@ function firstSampleIso() {
   return null;
 }
 
-async function main() {
+const SAMPLES_FILE = process.env.SAMPLES_FILE || join(ROOT, ".run-samples.json");
+
+/**
+ * Merge one run's samples into the record as it stands now, then recompute
+ * the summary. Kept apart from sampling (Oct 13, 2026): two runs can overlap
+ * (a late scheduled run queued behind another), and the second one's checkout
+ * is older than the first one's commit. Rebasing the JSON text then conflicts
+ * and the run's samples were lost (run 38437978840). The workflow now resets
+ * to the latest record and re-applies the samples, so nothing conflicts.
+ */
+export function applySamples(samples) {
   const touched = new Map();
-  for (let i = 0; i < SAMPLES; i++) {
-    if (i > 0) {
-      const now = Date.now();
-      await sleep(60_000 - (now % 60_000) + 1_000); // one second into the next minute
-    }
-    const at = new Date();
-    const results = await Promise.all(TARGETS.map(async (t) => [t.key, await checkTarget(t)]));
+  for (const s of samples) {
+    const at = new Date(s.at);
     const { day, minute } = utcSlot(at);
     const doc = touched.get(day) || loadDay(day);
-    for (const [key, r] of results) {
+    for (const [key, r] of s.results) {
       setMinute(doc, key, minute, r.ok);
-      if (!r.ok) doc.failures.push({ at: at.toISOString(), target: key, first: r.first, second: r.second });
+      if (!r.ok) doc.failures.push({ at: s.at, target: key, first: r.first, second: r.second });
     }
     touched.set(day, doc);
-    const line = results.map(([k, r]) => `${k}=${r.ok ? (r.blip ? "up(after retry)" : "up") : "DOWN"}`).join(" ");
-    console.log(`${at.toISOString()} ${line}`);
-  }
-  if (DRY_RUN) {
-    console.log("DRY_RUN: nothing written");
-    return;
   }
   for (const [day, doc] of touched) {
     mkdirSync(dirname(dayPath(day)), { recursive: true });
@@ -362,7 +363,34 @@ async function main() {
   const now = new Date();
   const summary = buildSummary(recentDayDocs(now), now, firstSampleIso() || now.toISOString());
   writeFileSync(join(ROOT, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
-  console.log(JSON.stringify(summary));
+  return summary;
+}
+
+async function main() {
+  if (process.argv[2] === "--apply") {
+    const samples = JSON.parse(readFileSync(process.argv[3] || SAMPLES_FILE, "utf8"));
+    console.log(JSON.stringify(applySamples(samples)));
+    return;
+  }
+  const samples = [];
+  for (let i = 0; i < SAMPLES; i++) {
+    if (i > 0) {
+      const now = Date.now();
+      await sleep(60_000 - (now % 60_000) + 1_000); // one second into the next minute
+    }
+    const at = new Date();
+    const results = await Promise.all(TARGETS.map(async (t) => [t.key, await checkTarget(t)]));
+    samples.push({ at: at.toISOString(), results });
+    const line = results.map(([k, r]) => `${k}=${r.ok ? (r.blip ? "up(after retry)" : "up") : "DOWN"}`).join(" ");
+    console.log(`${at.toISOString()} ${line}`);
+  }
+  if (DRY_RUN) {
+    console.log("DRY_RUN: nothing written");
+    return;
+  }
+  writeFileSync(SAMPLES_FILE, JSON.stringify(samples) + "\n");
+  console.log(`samples kept in ${SAMPLES_FILE}`);
+  console.log(JSON.stringify(applySamples(samples)));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
