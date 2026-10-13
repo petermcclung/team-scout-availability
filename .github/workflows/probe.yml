@@ -1,0 +1,45 @@
+name: Availability probe
+
+# Every five minutes GitHub starts a run; each run checks Team Scout at the
+# start of five consecutive minutes and commits the result to this repository.
+# GitHub may start a scheduled run late when its service is busy; minutes no
+# run covered are recorded as "not measured" and shown as coverage, never as up.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: availability-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unit tests
+        run: node --test probe.test.mjs
+      - name: Check Team Scout each minute for five minutes
+        run: node probe.mjs
+      - name: Commit the record
+        run: |
+          git config user.name "team-scout-availability-probe"
+          git config user.email "probe@users.noreply.github.com"
+          git add data summary.json
+          if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
+          git commit -q -m "probe: $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull -q --rebase origin main && git push -q origin HEAD:main && exit 0
+            sleep $((i * 5))
+          done
+          echo "::error::could not push the record after three tries"
+          exit 1
