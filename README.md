@@ -4,18 +4,18 @@ An independent record of whether Team Scout is up, written from outside Team Sco
 
 ## What is checked
 
-Every minute the probe runs, it checks six things a club depends on, across the web app, the admin workspace and the mobile app's services:
+Every five minutes (GitHub's schedule, often later), the probe checks six things a club depends on, across the web app, the admin workspace and the mobile app's services. Each run samples the start of five consecutive minutes.
 
 | Check | What has to happen |
 | --- | --- |
 | Sign-in | The sign-in page at app.teamscout.co loads and shows "Sign in" |
 | Admin workspace | An admin workspace address is served: a signed-out visit is sent to sign-in with the address kept |
-| Registration form | A live public registration form loads with its organization's name |
+| Registration form | Team Scout's own always-open registration form loads open (its title shows, "Registration Closed" does not), so a club's form closing never reads as an outage |
 | Organization site | An organization's public site loads with its name |
 | App services | The web app's server functions that the mobile app calls answer (a call without sign-in is refused by the function itself) |
 | Data service | The data service the web and mobile apps share: the sign-in service reports healthy and a data read answers |
 
-A check fails when the answer is not a normal page (HTTP 200), the expected words are missing, or nothing comes back within 10 seconds. A failed check is tried again 15 seconds later; only a second failure is recorded as down.
+A check fails when the answer is not a normal page (HTTP 200), the expected words are missing or words it must not show appear, or nothing comes back within 10 seconds. A failed check is tried again 15 seconds later; only a second failure is recorded as down.
 
 ## How availability is counted
 

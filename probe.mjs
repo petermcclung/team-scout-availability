@@ -4,20 +4,24 @@
  *
  * Runs on GitHub's computers, outside Team Scout's own hosting (Vercel for the
  * web pages, Supabase for the data service), so an outage on our side cannot
- * stop the record being written. One run takes a sample at the start of each
- * of the next five minutes; the schedule starts a run every five minutes.
+ * stop the record being written. GitHub starts a run every five minutes (its
+ * schedule, often later); each run takes a sample at the start of each of the
+ * next five minutes.
  *
  * A sample checks six things a club uses:
  *   sign_in            the sign-in page renders
  *   admin_workspace    an admin workspace address is served (sent to sign-in, address kept)
- *   registration_form  a live public registration form renders
+ *   registration_form  a public registration form renders open (Team Scout's own
+ *                      always-open "availability check" form, so a customer's
+ *                      form closing or being archived never reads as an outage)
  *   org_site           an organization's public site renders
  *   app_api            the web app's server functions the mobile app calls answer
  *   data_service       the data service the web and mobile apps share answers
  *                      (sign-in service health + a data read)
  *
  * A check fails when the answer is not HTTP 200, the page is missing its
- * expected text, or nothing comes back within 10 seconds. A failed check is
+ * expected text (or shows text it must not, such as "Registration Closed"),
+ * or nothing comes back within 10 seconds. A failed check is
  * retried once after 15 seconds; only a failed retry is recorded as down.
  * A minute is "unavailable" when any of the six is down in that minute.
  *
@@ -55,8 +59,14 @@ export const TARGETS = [
     key: "registration_form",
     checks: [
       {
-        url: "https://app.teamscout.co/register/christprepfootball/2026-fall-football",
-        requireText: "Christ Prep Academy Football",
+        // Team Scout's own form (org team-scout-public, created Oct 13 2026):
+        // open, unlisted, no closing date, nobody notified on a submission.
+        // Until Oct 13 this checked Christ Prep's fall form, which closed Oct 5;
+        // the closed page still answered 200, so the check proved nothing about
+        // an open form, and archiving it would have read as an outage.
+        url: "https://app.teamscout.co/register/team-scout-public/availability-check",
+        requireText: "Team Scout availability check",
+        forbidText: "Registration Closed",
       },
     ],
   },
@@ -136,6 +146,9 @@ async function fetchOnce(check) {
     }
     if (check.requireText && !body.includes(check.requireText)) {
       return { ok: false, status: res.status, ms, error: `missing text "${check.requireText}"` };
+    }
+    if (check.forbidText && body.includes(check.forbidText)) {
+      return { ok: false, status: res.status, ms, error: `shows "${check.forbidText}"` };
     }
     return { ok: true, status: res.status, ms };
   } catch (e) {

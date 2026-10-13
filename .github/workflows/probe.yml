@@ -1,7 +1,8 @@
 name: Availability probe
 
-# Every five minutes GitHub starts a run; each run checks Team Scout at the
-# start of five consecutive minutes and commits the result to this repository.
+# Every five minutes (GitHub's schedule, often later) a run starts; each run
+# checks Team Scout at the start of five consecutive minutes and commits the
+# result to this repository.
 # GitHub may start a scheduled run late when its service is busy; minutes no
 # run covered are recorded as "not measured" and shown as coverage, never as up.
 
@@ -28,7 +29,7 @@ jobs:
           node-version: "22"
       - name: Unit tests
         run: node --test probe.test.mjs
-      - name: Check Team Scout each minute for five minutes
+      - name: Check Team Scout (five samples, one a minute)
         run: node probe.mjs
       - name: Commit the record
         run: |

@@ -67,3 +67,10 @@ test("coverage counts the minute measuring began and never exceeds 100", () => {
   assert.equal(s.thisMonth.measuredMinutes, 5);
   assert.equal(s.thisMonth.coveragePercent, 100);
 });
+
+test("the registration check targets Team Scout's own open form and fails on a closed page", () => {
+  const reg = TARGETS.find((t) => t.key === "registration_form");
+  assert.equal(TARGETS.length, 6);
+  assert.match(reg.checks[0].url, /\/register\/team-scout-public\/availability-check$/);
+  assert.equal(reg.checks[0].forbidText, "Registration Closed");
+});
