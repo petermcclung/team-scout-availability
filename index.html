@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Scout availability</title>
+<meta name="description" content="An independent, minute-by-minute record of whether Team Scout is up, checked from outside Team Scout's own hosting.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=optional" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAF9F7;
+    --card: #FFFFFF;
+    --ink: #1A1B1E;
+    --ink-2: #4A4B50;
+    --ink-3: #6A6B70;
+    --navy: #151D35;
+    --teal: #2098BD;
+    --line: #E4E1DC;
+    --up: #15803D;
+    --down: #C62828;
+    --unmeasured: #DDD9D3;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--cream);
+    color: var(--ink);
+    font: 400 16px/1.55 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 16px; }
+  header.top { background: var(--navy); color: #fff; }
+  header.top .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 56px; gap: 12px; }
+  .brand { font: 700 18px/1 "Space Grotesk", system-ui, sans-serif; letter-spacing: -0.01em; color: #fff; text-decoration: none; }
+  .top a.repo { color: #CFE9F2; font-size: 14px; text-decoration: none; white-space: nowrap; }
+  .top a.repo:hover { text-decoration: underline; }
+  h1, h2 { font-family: "Space Grotesk", system-ui, sans-serif; color: var(--navy); text-wrap: balance; letter-spacing: -0.01em; }
+  h1 { font-size: clamp(28px, 6vw, 40px); line-height: 1.1; margin: 40px 0 12px; }
+  h2 { font-size: 22px; line-height: 1.2; margin: 0 0 6px; }
+  p { margin: 0 0 12px; text-wrap: pretty; }
+  .lede { font-size: 19px; color: var(--ink); max-width: 46ch; }
+  .muted { color: var(--ink-2); }
+  .small { font-size: 14px; color: var(--ink-3); }
+  section { margin: 32px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(21,29,53,0.04); }
+  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .tile .k { font-size: 13px; color: var(--ink-3); font-weight: 500; }
+  .tile .v { font: 700 30px/1.15 "Space Grotesk", system-ui, sans-serif; color: var(--navy); margin-top: 4px; white-space: nowrap; }
+  .tile .n { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
+  @media (max-width: 560px) { .tiles { grid-template-columns: 1fr; } .tile .v { font-size: 26px; } }
+  .strip { display: flex; gap: 3px; align-items: stretch; height: 56px; margin: 16px 0 6px; }
+  .day { flex: 1 1 0; min-width: 0; border: 0; padding: 0; border-radius: 3px; cursor: pointer; position: relative; overflow: hidden; background: var(--unmeasured); }
+  .day .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--up); }
+  .day.down .fill { background: var(--down); height: 100% !important; }
+  .day.before { background: transparent; border: 1px dashed var(--line); cursor: default; }
+  .day.future { background: transparent; border: 1px solid var(--line); cursor: default; }
+  .day[aria-pressed="true"] { outline: 2px solid var(--navy); outline-offset: 2px; }
+  .day:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  .axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); }
+  .detail { margin-top: 12px; min-height: 1.6em; font-size: 15px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 13px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 13px; }
+  td.when { white-space: nowrap; }
+  td.page { word-break: break-all; }
+  @media (max-width: 560px) {
+    table, thead, tbody, tr, td { display: block; }
+    thead { display: none; }
+    tr { border-bottom: 1px solid var(--line); padding: 10px 0; }
+    td { border: 0; padding: 2px 0; }
+  }
+  dl.defs { margin: 0; }
+  dl.defs dt { font-weight: 600; color: var(--navy); margin-top: 12px; }
+  dl.defs dt:first-child { margin-top: 0; }
+  dl.defs dd { margin: 2px 0 0; color: var(--ink-2); }
+  footer { border-top: 1px solid var(--line); margin-top: 48px; padding: 20px 0 40px; }
+  a { color: #17708E; }
+  .err { color: var(--down); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./">Team Scout</a>
+    <a class="repo" href="https://github.com/petermcclung/team-scout-availability">The full record</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>Team Scout availability</h1>
+  <p class="lede" id="headline">Loading the record.</p>
+  <p class="small" id="updated"></p>
+
+  <div class="tiles" id="tiles" aria-live="polite"></div>
+
+  <section>
+    <div class="card">
+      <h2 id="strip-title">This month, day by day</h2>
+      <p class="small">Times are Central. Each bar is one day. The colored part is the share of that day's minutes the monitor measured.</p>
+      <div class="strip" id="strip" role="group" aria-label="Days of the month"></div>
+      <div class="axis" id="axis"></div>
+      <p class="detail" id="detail"></p>
+      <div class="legend">
+        <span><i style="background:var(--up)"></i>Measured, no minute down</span>
+        <span><i style="background:var(--down)"></i>At least one minute down</span>
+        <span><i style="background:var(--unmeasured)"></i>Not measured</span>
+        <span><i style="border:1px dashed var(--line)"></i>Before measuring began</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Every recorded failure</h2>
+      <p class="small">A check is recorded as down only when it fails twice, 15 seconds apart.</p>
+      <div id="failures"><p class="muted">Loading.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>How it is counted</h2>
+      <dl class="defs">
+        <dt>What is checked, every minute</dt>
+        <dd>The sign-in page, an admin workspace address, Team Scout's own always-open registration form, an organization's public site, the server functions the mobile app calls, and the data service the web and mobile apps share.</dd>
+        <dt>A minute down</dt>
+        <dd>Any one of those six fails twice, 15 seconds apart, within the minute: no normal answer, the expected words missing, or nothing back within 10 seconds.</dd>
+        <dt>Availability</dt>
+        <dd>Minutes up divided by minutes measured, rounded down to two decimals. Months are Central time.</dd>
+        <dt>Coverage</dt>
+        <dd>Minutes measured divided by the minutes in the month since measuring began. A minute no check reached is counted as not measured, never as up.</dd>
+        <dt>Where the checks run</dt>
+        <dd>On GitHub's computers, separate from where Team Scout runs, so an outage on our side cannot stop the record being written. Every result is a commit in a public repository, so the record cannot be changed after the fact without it showing.</dd>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap small">
+    The record, the probe and its tests: <a href="https://github.com/petermcclung/team-scout-availability">github.com/petermcclung/team-scout-availability</a>.
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var ZONE = "America/Chicago";
+  var TARGETS = [
+    ["sign_in", "Sign-in page"],
+    ["admin_workspace", "Admin workspace"],
+    ["registration_form", "Registration form"],
+    ["org_site", "Organization site"],
+    ["app_api", "App server functions"],
+    ["data_service", "Data service"]
+  ];
+  var NAMES = {};
+  TARGETS.forEach(function (t) { NAMES[t[0]] = t[1]; });
+
+  var monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var partsFmt = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  var whenFmt = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+  function central(ms) {
+    var o = {};
+    partsFmt.formatToParts(new Date(ms)).forEach(function (p) { o[p.type] = p.value; });
+    return { y: +o.year, m: +o.month, d: +o.day, key: o.year + "-" + o.month + "-" + o.day, monthKey: o.year + "-" + o.month };
+  }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function fmtInt(n) { return n.toLocaleString("en-US"); }
+  function nb(s) { return s.replace(/ (\d)/g, " $1"); }
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function getJSON(path) {
+    return fetch(path, { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+
+  // First and last instant of a Central month, found by stepping minutes near the UTC boundary.
+  function monthBounds(y, m) {
+    var key = y + "-" + pad(m);
+    var start = Date.UTC(y, m - 1, 1) - 12 * 3600000;
+    while (central(start).monthKey !== key) start += 3600000;
+    while (central(start - 60000).monthKey === key) start -= 60000;
+    var ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
+    var end = Date.UTC(ny, nm - 1, 1) - 12 * 3600000;
+    while (central(end).monthKey === key) end += 3600000;
+    while (central(end - 60000).monthKey !== key) end -= 60000;
+    return { start: start, end: end }; // end is exclusive
+  }
+
+  Promise.all([getJSON("summary.json")]).then(function (res) {
+    var summary = res[0];
+    if (!summary) { document.getElementById("headline").textContent = "The record could not be loaded. The full record is on GitHub."; return; }
+    var now = Date.parse(summary.generatedAt) || Date.now();
+    var c = central(now);
+    var b = monthBounds(c.y, c.m);
+    var firstSample = Date.parse(summary.firstSampleAt);
+
+    // UTC day files that overlap this Central month, up to today.
+    var files = [];
+    var from = new Date(Math.max(b.start, firstSample || b.start));
+    for (var t = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()); t < b.end && t <= now; t += 86400000) {
+      var iso = new Date(t).toISOString().slice(0, 10);
+      files.push("data/" + iso.slice(0, 4) + "/" + iso.slice(5, 7) + "/" + iso + ".json");
+    }
+    return Promise.all(files.map(getJSON)).then(function (docs) {
+      render(summary, docs.filter(Boolean), c, b, now, firstSample);
+    });
+  });
+
+  function render(summary, docs, c, b, now, firstSample) {
+    var monthLabel = monthNames[c.m - 1] + " " + c.y;
+    var tm = summary.thisMonth, lm = summary.lastMonth;
+
+    // Per Central day tally, the same rule as the probe's summary.
+    var days = {};
+    var failures = [];
+    docs.forEach(function (doc) {
+      var base = Date.parse(doc.day + "T00:00:00Z");
+      for (var h = 0; h < 24; h++) {
+        var hourMs = base + h * 3600000;
+        if (hourMs + 3600000 <= b.start || hourMs >= b.end) continue;
+        var key = central(hourMs).key;
+        var row = days[key] || (days[key] = { measured: 0, down: 0 });
+        for (var mm = 0; mm < 60; mm++) {
+          var i = h * 60 + mm;
+          var anyDown = false, all = true;
+          for (var k = 0; k < TARGETS.length; k++) {
+            var s = doc.targets[TARGETS[k][0]];
+            var ch = s ? s.charAt(i) : ".";
+            if (ch === "0") anyDown = true;
+            if (ch !== "0" && ch !== "1") all = false;
+          }
+          if (!anyDown && !all) continue;
+          row.measured++;
+          if (anyDown) row.down++;
+        }
+      }
+      (doc.failures || []).forEach(function (f) {
+        var at = Date.parse(f.at);
+        if (at >= b.start && at < b.end) failures.push(f);
+      });
+    });
+
+    // Headline: only what the record shows.
+    var thisDown = tm ? tm.unavailableMinutes : 0;
+    var lastDown = lm ? lm.unavailableMinutes : 0;
+    var startedThisOrLastMonth = central(firstSample).monthKey === c.monthKey || (lm && central(firstSample).monthKey === lm.month);
+    var startDay = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, month: "long", day: "numeric", year: "numeric" }).format(new Date(firstSample));
+    var head;
+    if (thisDown === 0 && lastDown === 0 && startedThisOrLastMonth) {
+      head = "Our independent monitor has recorded no minute down since it started on " + startDay + ".";
+    } else if (thisDown === 0) {
+      head = "Our independent monitor has recorded no minute down in " + monthLabel + " so far.";
+    } else {
+      head = "In " + monthLabel + ", the monitor recorded " + fmtInt(thisDown) + (thisDown === 1 ? " minute" : " minutes") + " when Team Scout was unavailable. Each failure is listed below.";
+    }
+    document.getElementById("headline").textContent = nb(head);
+    document.getElementById("updated").textContent = "Record updated " + whenFmt.format(new Date(summary.generatedAt)) + " Central.";
+
+    // Tiles.
+    var tiles = document.getElementById("tiles");
+    function tile(k, v, n) {
+      var d = el("div", { "class": "tile" });
+      d.appendChild(el("div", { "class": "k" }, k));
+      d.appendChild(el("div", { "class": "v" }, v));
+      d.appendChild(el("div", { "class": "n" }, n));
+      tiles.appendChild(d);
+    }
+    if (tm) {
+      tile("Availability, " + monthLabel, tm.availabilityPercent + "%", "of the minutes measured");
+      tile("Coverage, " + monthLabel, tm.coveragePercent + "%", "of the month's minutes since measuring began");
+    } else {
+      tile("Availability, " + monthLabel, "Not yet", "no minute measured this month yet");
+      tile("Coverage, " + monthLabel, "0%", "of the month's minutes so far");
+    }
+    if (lm) {
+      tile("Availability, " + monthNames[+lm.month.slice(5) - 1] + " " + lm.month.slice(0, 4), lm.availabilityPercent + "%", "coverage " + lm.coveragePercent + "%" + (lm.fullMonthMeasured ? ", whole month" : ", from the day measuring began"));
+    } else {
+      tile("Measuring began", startDay, "checks every minute since then");
+    }
+
+    // Day strip.
+    document.getElementById("strip-title").textContent = monthLabel + ", day by day";
+    var strip = document.getElementById("strip");
+    var detail = document.getElementById("detail");
+    var daysInMonth = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
+    var firstKey = central(firstSample).key;
+    var buttons = [];
+    function describe(d, key, row, kind) {
+      var label = monthNames[c.m - 1] + " " + d;
+      if (kind === "before") return label + ": before measuring began.";
+      if (kind === "future") return label + ": still to come.";
+      var span = minutesInCentralDay(key, firstSample, now);
+      if (!row || row.measured === 0) return label + ": not measured.";
+      var pct = Math.floor(Math.min(1, row.measured / span) * 100);
+      var txt = label + ": " + pct + " percent of minutes measured" + (key === c.key ? " so far" : "");
+      txt += row.down ? ", " + fmtInt(row.down) + (row.down === 1 ? " minute" : " minutes") + " down." : ", no minute down.";
+      return nb(txt);
+    }
+    for (var d = 1; d <= daysInMonth; d++) {
+      var key = c.y + "-" + pad(c.m) + "-" + pad(d);
+      var kind = key < firstKey ? "before" : (key > c.key ? "future" : "day");
+      var row = days[key];
+      var btn = el("button", { "class": "day" + (kind !== "day" ? " " + kind : ""), type: "button", "aria-pressed": "false" });
+      if (kind === "day") {
+        var span = minutesInCentralDay(key, firstSample, now);
+        var share = row && span ? Math.min(1, row.measured / span) : 0;
+        if (row && row.down) btn.className += " down";
+        var fill = el("span", { "class": "fill" });
+        fill.style.height = (share * 100).toFixed(1) + "%";
+        btn.appendChild(fill);
+      }
+      var text = describe(d, key, row, kind);
+      btn.setAttribute("aria-label", text);
+      btn.title = text;
+      (function (b2, t2) {
+        b2.addEventListener("click", function () {
+          buttons.forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+          b2.setAttribute("aria-pressed", "true");
+          detail.textContent = t2;
+        });
+      })(btn, text);
+      if (kind !== "day") btn.disabled = kind === "future";
+      buttons.push(btn);
+      strip.appendChild(btn);
+      if (key === c.key) { btn.setAttribute("aria-pressed", "true"); detail.textContent = text; }
+    }
+    var axis = document.getElementById("axis");
+    [1, 15, daysInMonth].forEach(function (n) { axis.appendChild(el("span", null, monthNames[c.m - 1].slice(0, 3) + " " + n)); });
+
+    // Failures.
+    var box = document.getElementById("failures");
+    box.textContent = "";
+    if (!failures.length) {
+      box.appendChild(el("p", { "class": "muted" }, "No failure recorded in " + monthLabel + "."));
+    } else {
+      failures.sort(function (a, z) { return a.at < z.at ? -1 : a.at > z.at ? 1 : 0; });
+      var table = el("table");
+      var thead = el("thead"); var hr = el("tr");
+      ["When (Central)", "Check", "Page", "What came back"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
+      thead.appendChild(hr); table.appendChild(thead);
+      var tbody = el("tbody");
+      failures.forEach(function (f) {
+        var tr = el("tr");
+        var last = f.second || f.first || {};
+        tr.appendChild(el("td", { "class": "when" }, whenFmt.format(new Date(f.at))));
+        tr.appendChild(el("td", null, NAMES[f.target] || f.target));
+        tr.appendChild(el("td", { "class": "page" }, (last.url || (f.first && f.first.url) || "").replace(/^https:\/\//, "")));
+        var what = [f.first && f.first.error, f.second && f.second.error].filter(Boolean);
+        tr.appendChild(el("td", null, what.length ? "First try: " + what[0] + (what[1] ? ". 15 seconds later: " + what[1] + "." : ".") : "Failed twice."));
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      box.appendChild(table);
+    }
+  }
+
+  // Minutes in a Central day that the monitor could have measured (from the first sample, up to the last record update).
+  function minutesInCentralDay(key, firstSample, now) {
+    var parts = key.split("-").map(Number);
+    var s = Date.UTC(parts[0], parts[1] - 1, parts[2]) - 12 * 3600000;
+    while (central(s).key !== key) s += 3600000;
+    while (central(s - 60000).key === key) s -= 60000;
+    var e = s + 20 * 3600000;
+    while (central(e).key === key) e += 3600000;
+    while (central(e - 60000).key !== key) e -= 60000;
+    var from = Math.max(s, Math.floor(firstSample / 60000) * 60000);
+    var to = Math.min(e, now);
+    return Math.max(0, Math.ceil((to - from) / 60000));
+  }
+})();
+</script>
+</body>
+</html>

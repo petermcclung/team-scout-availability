@@ -2,6 +2,8 @@
 
 An independent record of whether Team Scout is up, written from outside Team Scout's own hosting.
 
+The status page: https://petermcclung.github.io/team-scout-availability/ (this repository's `index.html`, served by GitHub Pages from `main`; it reads `summary.json` and this month's daily files when it loads, so it shows the record as committed, with no build step).
+
 ## What is checked
 
 Once a minute, the probe checks six things a club depends on, across the web app, the admin workspace and the mobile app's services.
@@ -27,6 +29,7 @@ A check fails when the answer is not a normal page (HTTP 200), the expected word
 
 ## Where the record is
 
+- `index.html`: the status page. It shows only what the record shows: the one-sentence answer, this month's availability and coverage, a bar per day, and every recorded failure with its time in Central.
 - `summary.json`: this month so far and last month.
 - `data/YYYY/MM/YYYY-MM-DD.json`: one file per day (UTC). Each check has 1,440 characters, one per minute: `1` up, `0` down, `.` not measured. Every failure is listed with its time, the page and the answer received.
 
