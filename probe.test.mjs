@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeChar, tally, availabilityPercent, centralMonth, buildSummary, TARGETS } from "./probe.mjs";
+import { mergeChar, tally, availabilityPercent, centralMonth, buildSummary, TARGETS, mergeSamples, emptyDay, shouldHandOff } from "./probe.mjs";
 
 const blank = () => ".".repeat(1440);
 function day(dayKey, marks) {
@@ -68,14 +68,86 @@ test("coverage counts the minute measuring began and never exceeds 100", () => {
   assert.equal(s.thisMonth.coveragePercent, 100);
 });
 
-test("the registration check targets Team Scout's own open form and fails on a closed page", () => {
+test("the registration check targets Team Scout's own open form and fails on every page that is not an open form", () => {
   const reg = TARGETS.find((t) => t.key === "registration_form");
   assert.equal(TARGETS.length, 6);
   assert.match(reg.checks[0].url, /\/register\/team-scout-public\/availability-check$/);
-  assert.equal(reg.checks[0].forbidText, "Registration Closed");
+  for (const notice of ["Registration Closed", "Registration opens", "Registration Full", "ready yet", "not taking payments yet"]) {
+    assert.ok(reg.checks[0].forbidText.includes(notice), notice);
+  }
+  assert.ok(reg.checks[0].requireText.includes("Continue"), "the open form's own button");
 });
 
 test("applying a run's samples merges into the record without writing in a dry module import", async () => {
   const { applySamples } = await import("./probe.mjs");
   assert.equal(typeof applySamples, "function");
+});
+
+// Two runs that overlap (Oct 14, 2026: runs now last up to 45 minutes and
+// GitHub starts them every 10 to 25, so most minutes are sampled by two runs).
+const at = (minute) => new Date(Date.parse("2026-10-14T00:00:00Z") + minute * 60_000 + 1_000).toISOString();
+const up = { ok: true };
+const down = { ok: false, first: { error: "HTTP 503" }, second: { error: "HTTP 503" } };
+function run(fromMinute, toMinute, downAt = new Set()) {
+  const out = [];
+  for (let m = fromMinute; m <= toMinute; m++) {
+    out.push({ at: at(m), results: TARGETS.map((t) => [t.key, downAt.has(m) && t.key === "sign_in" ? down : up]) });
+  }
+  return out;
+}
+function landInOrder(...runs) {
+  // Each run lands on the record the previous one committed, as the workflow does.
+  const record = new Map();
+  const getDay = (d) => structuredClone(record.get(d) || emptyDay(d));
+  for (const r of runs) for (const [d, doc] of mergeSamples(r, getDay)) record.set(d, doc);
+  return record.get("2026-10-14");
+}
+
+test("two overlapping runs: union of minutes measured, a down seen by either run wins", () => {
+  const a = run(600, 629); // run A saw everything up
+  const b = run(615, 644, new Set([620])); // run B saw sign-in down at 10:20 UTC
+  const doc = landInOrder(a, b);
+  const s = doc.targets.sign_in;
+  assert.equal(s.slice(600, 645).replace(/[01]/g, "").length, 0, "every minute 600-644 measured");
+  assert.equal(s[599], ".");
+  assert.equal(s[645], ".");
+  assert.equal(s[620], "0", "A's up does not hide B's down");
+  assert.equal(doc.failures.length, 1);
+  const months = tally([doc]);
+  assert.deepEqual(months["2026-10"], { measuredMinutes: 45, unavailableMinutes: 1 });
+});
+
+test("the order overlapping runs land in does not change the record", () => {
+  const a = run(600, 629, new Set([610]));
+  const b = run(615, 644, new Set([620]));
+  assert.deepEqual(landInOrder(a, b), landInOrder(b, a));
+});
+
+test("re-applying the same run changes nothing and lists its failure once", () => {
+  const a = run(600, 629, new Set([620]));
+  const once = landInOrder(a);
+  const twice = landInOrder(a, a);
+  assert.deepEqual(twice, once);
+  assert.equal(once.failures.length, 1);
+});
+
+test("a run that crosses UTC midnight writes both days", () => {
+  const samples = [
+    { at: "2026-10-14T23:59:01.000Z", results: TARGETS.map((t) => [t.key, up]) },
+    { at: "2026-10-15T00:00:01.000Z", results: TARGETS.map((t) => [t.key, up]) },
+  ];
+  const touched = mergeSamples(samples, (d) => emptyDay(d));
+  assert.deepEqual([...touched.keys()].sort(), ["2026-10-14", "2026-10-15"]);
+  assert.equal(touched.get("2026-10-14").targets.sign_in[1439], "1");
+  assert.equal(touched.get("2026-10-15").targets.sign_in[0], "1");
+});
+
+test("hand-off: stop only for a newer run that has been running three minutes", () => {
+  const now = Date.parse("2026-10-14T15:00:00Z");
+  const r = (n, minsAgo, status = "in_progress") => ({ run_number: n, status, run_started_at: new Date(now - minsAgo * 60_000).toISOString() });
+  assert.equal(shouldHandOff([r(10, 20), r(11, 3)], 10, now), true);
+  assert.equal(shouldHandOff([r(10, 20), r(11, 2)], 10, now), false, "newer run too fresh");
+  assert.equal(shouldHandOff([r(9, 40), r(10, 20)], 10, now), false, "an older run never takes over");
+  assert.equal(shouldHandOff([r(11, 10, "queued")], 10, now), false, "a queued run is not sampling");
+  assert.equal(shouldHandOff([], 10, now), false);
 });

@@ -1,27 +1,34 @@
 name: Availability probe
 
-# Every five minutes (GitHub's schedule, often later) a run starts; each run
-# checks Team Scout at the start of five consecutive minutes and commits the
-# result to this repository.
-# GitHub may start a scheduled run late when its service is busy; minutes no
-# run covered are recorded as "not measured" and shown as coverage, never as up.
+# The schedule asks for a run every five minutes; GitHub starts one every 10 to
+# 25 minutes in practice (up to 50 at its busiest hour). Each run checks Team
+# Scout at the start of every minute for up to 45 minutes, and hands off (stops
+# early) once a newer run has been sampling for three minutes, so runs overlap
+# instead of leaving gaps. Minutes no run covered are recorded as "not
+# measured" and shown as coverage, never as up.
+#
+# No concurrency group, on purpose: a group lets one run wait and cancels any
+# other waiting run, which would serialise 45-minute runs and leave gaps. Two
+# runs that overlap are safe: the commit step below re-applies this run's
+# samples on top of the latest record (down wins, nothing is listed twice).
+#
+# Cost: standard GitHub-hosted runners (ubuntu-latest) in a public repository
+# are free, with no minute quota. Never switch this to a larger runner; those
+# are charged even on public repositories.
 
 on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
-concurrency:
-  group: availability-probe
-  cancel-in-progress: false
-
 permissions:
   contents: write
+  actions: read
 
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,8 +36,10 @@ jobs:
           node-version: "22"
       - name: Unit tests
         run: node --test probe.test.mjs
-      - name: Check Team Scout (five samples, one a minute)
+      - name: Check Team Scout (one sample a minute, up to 45, hands off to a newer run)
         run: node probe.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Commit the record
         run: |
           git config user.name "team-scout-availability-probe"
@@ -38,7 +47,7 @@ jobs:
           # Start from the latest record every attempt and re-apply this run's
           # samples (kept in .run-samples.json, untracked), so an overlapping run
           # never conflicts and no sample is lost.
-          for i in 1 2 3 4 5; do
+          for i in 1 2 3 4 5 6 7 8; do
             git fetch -q origin main
             git reset -q --hard origin/main
             node probe.mjs --apply .run-samples.json > /dev/null
@@ -48,5 +57,5 @@ jobs:
             git push -q origin HEAD:main && exit 0
             sleep $((i * 5))
           done
-          echo "::error::could not push the record after five tries"
+          echo "::error::could not push the record after eight tries"
           exit 1

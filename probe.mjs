@@ -4,9 +4,12 @@
  *
  * Runs on GitHub's computers, outside Team Scout's own hosting (Vercel for the
  * web pages, Supabase for the data service), so an outage on our side cannot
- * stop the record being written. GitHub starts a run every five minutes (its
- * schedule, often later); each run takes a sample at the start of each of the
- * next five minutes.
+ * stop the record being written. The schedule asks GitHub for a run every five
+ * minutes; GitHub actually starts one every 10 to 25 minutes (as much as 50 at
+ * its busiest hour). So each run samples the start of every minute for up to
+ * 45 minutes, and stops early once a newer run has been sampling for three
+ * minutes (the hand-off). Runs overlap a little instead of leaving gaps, and
+ * only one or two are running at a time.
  *
  * A sample checks six things a club uses:
  *   sign_in            the sign-in page renders
@@ -20,7 +23,8 @@
  *                      (sign-in service health + a data read)
  *
  * A check fails when the answer is not HTTP 200, the page is missing its
- * expected text (or shows text it must not, such as "Registration Closed"),
+ * expected text (or shows text it must not, such as "Registration Closed" or
+ * "This form isn't ready yet"),
  * or nothing comes back within 10 seconds. A failed check is
  * retried once after 15 seconds; only a failed retry is recorded as down.
  * A minute is "unavailable" when any of the six is down in that minute.
@@ -30,7 +34,10 @@
  *   "." not measured, "1" up, "0" down.
  * summary.json is recomputed on every run (months are Central time).
  *
- * Env: SAMPLES (default 5), DRY_RUN=1 (print, write nothing), SAMPLES_FILE.
+ * Env: SAMPLES (default 45, the most minutes one run samples), MIN_SAMPLES
+ * (default 3, minutes sampled before a hand-off is considered), DRY_RUN=1
+ * (print, write nothing), SAMPLES_FILE. The hand-off reads this workflow's
+ * running runs with GITHUB_TOKEN; when that read fails the run keeps sampling.
  * `node probe.mjs --apply [file]` merges a finished run's samples into the
  * record as it stands now (the workflow uses it after resetting to main).
  */
@@ -39,7 +46,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const SAMPLES = Number(process.env.SAMPLES || 5);
+const SAMPLES = Number(process.env.SAMPLES || 45);
+const MIN_SAMPLES = Number(process.env.MIN_SAMPLES || 3);
+export const HANDOFF_AFTER_MS = 3 * 60_000;
+const MAX_SAMPLING_MS = 48 * 60_000;
 const DRY_RUN = process.env.DRY_RUN === "1";
 const TIMEOUT_MS = 10_000;
 const RETRY_DELAY_MS = 15_000;
@@ -66,9 +76,15 @@ export const TARGETS = [
         // Until Oct 13 this checked Christ Prep's fall form, which closed Oct 5;
         // the closed page still answered 200, so the check proved nothing about
         // an open form, and archiving it would have read as an outage.
+        // Until Oct 14 the form had no pages, so the page said "This form isn't
+        // ready yet" and still passed: the title showed and "Registration
+        // Closed" did not. The form now has the standard pages, and the check
+        // requires the form's own Continue button and refuses every notice the
+        // page shows instead of a form (closed, not open yet, full, not ready,
+        // not taking payments).
         url: "https://app.teamscout.co/register/team-scout-public/availability-check",
-        requireText: "Team Scout availability check",
-        forbidText: "Registration Closed",
+        requireText: ["Team Scout availability check", "Continue"],
+        forbidText: ["Registration Closed", "Registration opens", "Registration Full", "ready yet", "not taking payments yet"],
       },
     ],
   },
@@ -146,12 +162,10 @@ async function fetchOnce(check) {
         return { ok: false, status: res.status, ms, error: "not JSON (gateway error page)" };
       }
     }
-    if (check.requireText && !body.includes(check.requireText)) {
-      return { ok: false, status: res.status, ms, error: `missing text "${check.requireText}"` };
-    }
-    if (check.forbidText && body.includes(check.forbidText)) {
-      return { ok: false, status: res.status, ms, error: `shows "${check.forbidText}"` };
-    }
+    const missing = [check.requireText ?? []].flat().find((t) => !body.includes(t));
+    if (missing) return { ok: false, status: res.status, ms, error: `missing text "${missing}"` };
+    const shown = [check.forbidText ?? []].flat().find((t) => body.includes(t));
+    if (shown) return { ok: false, status: res.status, ms, error: `shows "${shown}"` };
     return { ok: true, status: res.status, ms };
   } catch (e) {
     const ms = Date.now() - started;
@@ -188,7 +202,7 @@ function dayPath(day) {
   return join(ROOT, "data", y, m, `${day}.json`);
 }
 
-function emptyDay(day) {
+export function emptyDay(day) {
   const blank = ".".repeat(1440);
   return { day, timezone: "UTC", targets: Object.fromEntries(TARGETS.map((t) => [t.key, blank])), failures: [] };
 }
@@ -207,7 +221,7 @@ export function mergeChar(prev, ok) {
   return "1";
 }
 
-function setMinute(dayDoc, key, minute, ok) {
+export function setMinute(dayDoc, key, minute, ok) {
   const s = dayDoc.targets[key];
   dayDoc.targets[key] = s.slice(0, minute) + mergeChar(s[minute], ok) + s.slice(minute + 1);
 }
@@ -345,17 +359,7 @@ const SAMPLES_FILE = process.env.SAMPLES_FILE || join(ROOT, ".run-samples.json")
  * to the latest record and re-applies the samples, so nothing conflicts.
  */
 export function applySamples(samples) {
-  const touched = new Map();
-  for (const s of samples) {
-    const at = new Date(s.at);
-    const { day, minute } = utcSlot(at);
-    const doc = touched.get(day) || loadDay(day);
-    for (const [key, r] of s.results) {
-      setMinute(doc, key, minute, r.ok);
-      if (!r.ok) doc.failures.push({ at: s.at, target: key, first: r.first, second: r.second });
-    }
-    touched.set(day, doc);
-  }
+  const touched = mergeSamples(samples, loadDay);
   for (const [day, doc] of touched) {
     mkdirSync(dirname(dayPath(day)), { recursive: true });
     writeFileSync(dayPath(day), JSON.stringify(doc, null, 1) + "\n");
@@ -366,6 +370,59 @@ export function applySamples(samples) {
   return summary;
 }
 
+/**
+ * Merge samples into day documents (pure: `getDay(day)` supplies the record as
+ * it stands). Down wins over up and up over unmeasured, so the order two
+ * overlapping runs land in does not change the result. A failure already listed
+ * for the same minute and check is not listed twice, so applying the same run
+ * again changes nothing.
+ */
+export function mergeSamples(samples, getDay) {
+  const touched = new Map();
+  for (const s of samples) {
+    const at = new Date(s.at);
+    const { day, minute } = utcSlot(at);
+    const doc = touched.get(day) || getDay(day);
+    for (const [key, r] of s.results) {
+      setMinute(doc, key, minute, r.ok);
+      if (!r.ok && !doc.failures.some((f) => f.at === s.at && f.target === key)) {
+        doc.failures.push({ at: s.at, target: key, first: r.first, second: r.second });
+      }
+    }
+    touched.set(day, doc);
+  }
+  for (const doc of touched.values()) doc.failures.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.target < b.target ? -1 : 1));
+  return touched;
+}
+
+/**
+ * The hand-off: true when another run of this workflow, started after this one
+ * (a higher run number), has been running for at least three minutes, so it is
+ * already sampling and this run can stop.
+ */
+export function shouldHandOff(runs, myRunNumber, nowMs) {
+  return runs.some(
+    (r) => r.status === "in_progress" && r.run_number > myRunNumber && nowMs - Date.parse(r.run_started_at) >= HANDOFF_AFTER_MS,
+  );
+}
+
+async function newerRunIsSampling() {
+  const { GITHUB_REPOSITORY: repo, GITHUB_RUN_NUMBER: num, GITHUB_TOKEN: token, GITHUB_WORKFLOW_REF: ref } = process.env;
+  if (!repo || !num || !token || !ref) return false;
+  const file = ref.split("@")[0].split("/").pop();
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${file}/runs?status=in_progress&per_page=30`, {
+      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return false;
+    const { workflow_runs: runs = [] } = await res.json();
+    return shouldHandOff(runs, Number(num), Date.now());
+  } catch {
+    return false; // cannot tell: keep sampling
+  }
+}
+
 async function main() {
   if (process.argv[2] === "--apply") {
     const samples = JSON.parse(readFileSync(process.argv[3] || SAMPLES_FILE, "utf8"));
@@ -373,7 +430,18 @@ async function main() {
     return;
   }
   const samples = [];
+  const startedMs = Date.now();
   for (let i = 0; i < SAMPLES; i++) {
+    // A hard stop well inside the job's 60-minute timeout, so a slow outage
+    // (every check waiting out its 10 seconds) is still committed, not lost.
+    if (Date.now() - startedMs > MAX_SAMPLING_MS) {
+      console.log(`sampling time limit reached after ${i} samples`);
+      break;
+    }
+    if (i >= MIN_SAMPLES && (await newerRunIsSampling())) {
+      console.log(`a newer run has been sampling for three minutes; handing off after ${i} samples`);
+      break;
+    }
     if (i > 0) {
       const now = Date.now();
       await sleep(60_000 - (now % 60_000) + 1_000); // one second into the next minute
