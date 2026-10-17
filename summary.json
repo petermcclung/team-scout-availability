@@ -1,12 +1,12 @@
 {
   "measuredSince": "2026-10-13",
   "firstSampleAt": "2026-10-13T14:54:00.000Z",
-  "generatedAt": "2026-10-17T01:15:03.867Z",
+  "generatedAt": "2026-10-17T01:37:03.696Z",
   "definition": "A minute is unavailable when the sign-in page, the admin workspace, a public registration form, an organization's public site, the app's server functions or the data service fails twice, 15 seconds apart, within that minute. Availability = minutes up / minutes measured. Months are Central time.",
   "thisMonth": {
     "month": "2026-10",
     "fullMonthMeasured": false,
-    "measuredMinutes": 3934,
+    "measuredMinutes": 3956,
     "unavailableMinutes": 1,
     "availabilityPercent": 99.97,
     "coveragePercent": 79.6
