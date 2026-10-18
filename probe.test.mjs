@@ -20,23 +20,23 @@ test("down wins over up, up wins over unmeasured", () => {
 });
 
 test("a minute with every target up is measured and available", () => {
-  const months = tally([day("2026-10-14", [...allUp(600), ...allUp(601)])]);
+  const months = tally([day("2026-10-14", [...allUp(600), ...allUp(601)])], null);
   assert.deepEqual(months["2026-10"], { measuredMinutes: 2, unavailableMinutes: 0 });
 });
 
 test("one target down makes the whole minute unavailable", () => {
   const marks = [...allUp(600), ...TARGETS.map((t) => [t.key, 601, t.key === "registration_form" ? "0" : "1"])];
-  const months = tally([day("2026-10-14", marks)]);
+  const months = tally([day("2026-10-14", marks)], null);
   assert.deepEqual(months["2026-10"], { measuredMinutes: 2, unavailableMinutes: 1 });
 });
 
 test("a down minute counts even when another target was not measured", () => {
-  const months = tally([day("2026-10-14", [["data_service", 700, "0"]])]);
+  const months = tally([day("2026-10-14", [["data_service", 700, "0"]])], null);
   assert.deepEqual(months["2026-10"], { measuredMinutes: 1, unavailableMinutes: 1 });
 });
 
 test("a partly measured minute with nothing down is not counted", () => {
-  const months = tally([day("2026-10-14", [["sign_in", 700, "1"]])]);
+  const months = tally([day("2026-10-14", [["sign_in", 700, "1"]])], null);
   assert.equal(months["2026-10"], undefined);
 });
 
@@ -54,7 +54,7 @@ test("months are Central time: 3 AM UTC on Nov 1 is still October in Central", (
 
 test("summary reports this month so far and no last month before November", () => {
   const docs = [day("2026-10-14", [...allUp(600), ...allUp(601)])];
-  const s = buildSummary(docs, new Date("2026-10-14T12:00:00Z"), "2026-10-14T10:00:00Z");
+  const s = buildSummary(docs, new Date("2026-10-14T12:00:00Z"), "2026-10-14T10:00:00Z", null);
   assert.equal(s.thisMonth.month, "2026-10");
   assert.equal(s.thisMonth.availabilityPercent, 100);
   assert.equal(s.thisMonth.fullMonthMeasured, false);
@@ -63,7 +63,7 @@ test("summary reports this month so far and no last month before November", () =
 
 test("coverage counts the minute measuring began and never exceeds 100", () => {
   const docs = [day("2026-10-13", [...allUp(894), ...allUp(895), ...allUp(896), ...allUp(897), ...allUp(898)])];
-  const s = buildSummary(docs, new Date("2026-10-13T14:58:02Z"), "2026-10-13T14:54:00Z");
+  const s = buildSummary(docs, new Date("2026-10-13T14:58:02Z"), "2026-10-13T14:54:00Z", null);
   assert.equal(s.thisMonth.measuredMinutes, 5);
   assert.equal(s.thisMonth.coveragePercent, 100);
 });
@@ -113,7 +113,7 @@ test("two overlapping runs: union of minutes measured, a down seen by either run
   assert.equal(s[645], ".");
   assert.equal(s[620], "0", "A's up does not hide B's down");
   assert.equal(doc.failures.length, 1);
-  const months = tally([doc]);
+  const months = tally([doc], null);
   assert.deepEqual(months["2026-10"], { measuredMinutes: 45, unavailableMinutes: 1 });
 });
 
@@ -150,4 +150,14 @@ test("hand-off: stop only for a newer run that has been running three minutes", 
   assert.equal(shouldHandOff([r(9, 40), r(10, 20)], 10, now), false, "an older run never takes over");
   assert.equal(shouldHandOff([r(11, 10, "queued")], 10, now), false, "a queued run is not sampling");
   assert.equal(shouldHandOff([], 10, now), false);
+});
+
+test("minutes before COUNTED_FROM (the monitor's first two days) are kept in the record but not counted", () => {
+  const docs = [day("2026-10-14", [...allUp(600), ["sign_in", 601, "0"]]), day("2026-10-15", [...allUp(300), ...allUp(301), ...allUp(302)])];
+  const s = buildSummary(docs, new Date("2026-10-15T05:03:30Z"), "2026-10-13T14:54:00Z");
+  assert.equal(s.countedFrom, "2026-10-15T05:00:00Z");
+  assert.equal(s.thisMonth.measuredMinutes, 3, "Oct 14 minutes are not counted");
+  assert.equal(s.thisMonth.unavailableMinutes, 0, "the Oct 14 down minute is not counted either");
+  assert.equal(s.thisMonth.coveragePercent, 75, "3 of the 4 minutes since 05:00 UTC");
+  assert.deepEqual(tally(docs, null)["2026-10"], { measuredMinutes: 5, unavailableMinutes: 1 }, "the record itself keeps every minute");
 });

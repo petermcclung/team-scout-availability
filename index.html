@@ -54,7 +54,9 @@
   .strip { display: flex; gap: 3px; align-items: stretch; height: 56px; margin: 16px 0 6px; }
   .day { flex: 1 1 0; min-width: 0; border: 0; padding: 0; border-radius: 3px; cursor: pointer; position: relative; overflow: hidden; background: var(--unmeasured); }
   .day .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--up); }
-  .day.down .fill { background: var(--down); height: 100% !important; }
+  .day .bad { position: absolute; left: 0; right: 0; bottom: 0; background: var(--down); }
+  .day.trial { background: repeating-linear-gradient(135deg, var(--unmeasured) 0 3px, var(--card) 3px 6px); }
+  .day.trial .fill { background: #AEB7C4; }
   .day.before { background: transparent; border: 1px dashed var(--line); cursor: default; }
   .day.future { background: transparent; border: 1px solid var(--line); cursor: default; }
   .day[aria-pressed="true"] { outline: 2px solid var(--navy); outline-offset: 2px; }
@@ -101,15 +103,16 @@
   <section>
     <div class="card">
       <h2 id="strip-title">This month, day by day</h2>
-      <p class="small">Times are Central. Each bar is one day. The colored part is the share of that day's minutes the monitor measured.</p>
+      <p class="small">Times are Central. Each bar is one day. Green is the share of the day's minutes the monitor measured and found up. Red is minutes down, drawn no thinner than a sliver so a single minute still shows. Grey is minutes no check reached.</p>
       <div class="strip" id="strip" role="group" aria-label="Days of the month"></div>
       <div class="axis" id="axis"></div>
       <p class="detail" id="detail"></p>
       <div class="legend">
-        <span><i style="background:var(--up)"></i>Measured, no minute down</span>
-        <span><i style="background:var(--down)"></i>At least one minute down</span>
+        <span><i style="background:var(--up)"></i>Minutes measured and up</span>
+        <span><i style="background:var(--down)"></i>Minutes down (never thinner than a sliver)</span>
         <span><i style="background:var(--unmeasured)"></i>Not measured</span>
-        <span><i style="border:1px dashed var(--line)"></i>Before measuring began</span>
+        <span><i style="background:repeating-linear-gradient(135deg, var(--unmeasured) 0 2px, var(--card) 2px 4px)"></i>Monitor's first days, shown but not counted</span>
+        <span><i style="border:1px dashed var(--line)"></i>Before the monitor existed</span>
       </div>
     </div>
   </section>
@@ -133,7 +136,7 @@
         <dt>Availability</dt>
         <dd>Minutes up divided by minutes measured, rounded down to two decimals. Months are Central time.</dd>
         <dt>Coverage</dt>
-        <dd>Minutes measured divided by the minutes in the month since measuring began. A minute no check reached is counted as not measured, never as up.</dd>
+        <dd>Minutes measured divided by the minutes in the month since full-strength measuring began on October 15, 2026. A minute no check reached is counted as not measured, never as up. The monitor's first two days, October 13 and 14, reached only part of each hour while its runs were still short; they stay in the record and show hatched on the strip, and no minute of them counts as up or as down.</dd>
         <dt>Where the checks run</dt>
         <dd>On GitHub's computers, separate from where Team Scout runs, so an outage on our side cannot stop the record being written. Every result is a commit in a public repository, so the record cannot be changed after the fact without it showing.</dd>
       </dl>
@@ -204,6 +207,7 @@
     var c = central(now);
     var b = monthBounds(c.y, c.m);
     var firstSample = Date.parse(summary.firstSampleAt);
+    var countedFrom = Date.parse(summary.countedFrom) || firstSample;
 
     // UTC day files that overlap this Central month, up to today.
     var files = [];
@@ -213,11 +217,11 @@
       files.push("data/" + iso.slice(0, 4) + "/" + iso.slice(5, 7) + "/" + iso + ".json");
     }
     return Promise.all(files.map(getJSON)).then(function (docs) {
-      render(summary, docs.filter(Boolean), c, b, now, firstSample);
+      render(summary, docs.filter(Boolean), c, b, now, firstSample, countedFrom);
     });
   });
 
-  function render(summary, docs, c, b, now, firstSample) {
+  function render(summary, docs, c, b, now, firstSample, countedFrom) {
     var monthLabel = monthNames[c.m - 1] + " " + c.y;
     var tm = summary.thisMonth, lm = summary.lastMonth;
 
@@ -254,17 +258,20 @@
     // Headline: only what the record shows.
     var thisDown = tm ? tm.unavailableMinutes : 0;
     var lastDown = lm ? lm.unavailableMinutes : 0;
-    var startedThisOrLastMonth = central(firstSample).monthKey === c.monthKey || (lm && central(firstSample).monthKey === lm.month);
-    var startDay = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, month: "long", day: "numeric", year: "numeric" }).format(new Date(firstSample));
+    var startedThisOrLastMonth = central(countedFrom).monthKey === c.monthKey || (lm && central(countedFrom).monthKey === lm.month);
+    var dayFmt = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, month: "long", day: "numeric", year: "numeric" });
+    var startDay = dayFmt.format(new Date(countedFrom));
+    var noYear = function (ms) { return dayFmt.format(new Date(ms)).replace(/, \d{4}$/, ""); };
+    var trialNote = countedFrom > firstSample ? " The monitor's first days, " + noYear(firstSample) + " through " + noYear(countedFrom - 86400000) + ", ran at partial strength and are shown hatched, not counted." : "";
     var head;
     if (thisDown === 0 && lastDown === 0 && startedThisOrLastMonth) {
-      head = "Our independent monitor has recorded no minute down since it started on " + startDay + ".";
+      head = "Our independent monitor has recorded no minute down since full-strength measuring began on " + startDay + ".";
     } else if (thisDown === 0) {
       head = "Our independent monitor has recorded no minute down in " + monthLabel + " so far.";
     } else {
       head = "In " + monthLabel + ", the monitor recorded " + fmtInt(thisDown) + (thisDown === 1 ? " minute" : " minutes") + " when Team Scout was unavailable. Each failure is listed below.";
     }
-    document.getElementById("headline").textContent = nb(head);
+    document.getElementById("headline").textContent = nb(head + trialNote);
     document.getElementById("updated").textContent = "Record updated " + whenFmt.format(new Date(summary.generatedAt)) + " Central.";
 
     // Tiles.
@@ -278,7 +285,7 @@
     }
     if (tm) {
       tile("Availability, " + monthLabel, tm.availabilityPercent + "%", "of the minutes measured");
-      tile("Coverage, " + monthLabel, tm.coveragePercent + "%", "of the month's minutes since measuring began");
+      tile("Coverage, " + monthLabel, tm.coveragePercent + "%", "of the minutes since " + startDay.replace(/, \d{4}$/, ""));
     } else {
       tile("Availability, " + monthLabel, "Not yet", "no minute measured this month yet");
       tile("Coverage, " + monthLabel, "0%", "of the month's minutes so far");
@@ -286,7 +293,7 @@
     if (lm) {
       tile("Availability, " + monthNames[+lm.month.slice(5) - 1] + " " + lm.month.slice(0, 4), lm.availabilityPercent + "%", "coverage " + lm.coveragePercent + "%" + (lm.fullMonthMeasured ? ", whole month" : ", from the day measuring began"));
     } else {
-      tile("Measuring began", startDay, "checks every minute since then");
+      tile("Full-strength measuring began", startDay, "six checks every minute since then");
     }
 
     // Day strip.
@@ -295,30 +302,37 @@
     var detail = document.getElementById("detail");
     var daysInMonth = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
     var firstKey = central(firstSample).key;
+    var countedKey = central(countedFrom).key;
     var buttons = [];
     function describe(d, key, row, kind) {
       var label = monthNames[c.m - 1] + " " + d;
-      if (kind === "before") return label + ": before measuring began.";
+      if (kind === "before") return label + ": before the monitor existed.";
       if (kind === "future") return label + ": still to come.";
-      var span = minutesInCentralDay(key, firstSample, now);
+      var span = minutesInCentralDay(key, kind === "trial" ? firstSample : countedFrom, now);
       if (!row || row.measured === 0) return label + ": not measured.";
       var pct = Math.floor(Math.min(1, row.measured / span) * 100);
+      if (kind === "trial") return nb(label + ": one of the monitor's first days. Its runs were still short, so it reached " + pct + " percent of minutes" + (row.down ? ", " + fmtInt(row.down) + " down" : "") + ". Shown, not counted.");
       var txt = label + ": " + pct + " percent of minutes measured" + (key === c.key ? " so far" : "");
       txt += row.down ? ", " + fmtInt(row.down) + (row.down === 1 ? " minute" : " minutes") + " down." : ", no minute down.";
       return nb(txt);
     }
     for (var d = 1; d <= daysInMonth; d++) {
       var key = c.y + "-" + pad(c.m) + "-" + pad(d);
-      var kind = key < firstKey ? "before" : (key > c.key ? "future" : "day");
+      var kind = key < firstKey ? "before" : (key < countedKey ? "trial" : (key > c.key ? "future" : "day"));
       var row = days[key];
       var btn = el("button", { "class": "day" + (kind !== "day" ? " " + kind : ""), type: "button", "aria-pressed": "false" });
-      if (kind === "day") {
-        var span = minutesInCentralDay(key, firstSample, now);
-        var share = row && span ? Math.min(1, row.measured / span) : 0;
-        if (row && row.down) btn.className += " down";
+      if (kind === "day" || kind === "trial") {
+        var span = minutesInCentralDay(key, kind === "trial" ? firstSample : countedFrom, now);
+        var upShare = row && span ? Math.min(1, (row.measured - row.down) / span) : 0;
         var fill = el("span", { "class": "fill" });
-        fill.style.height = (share * 100).toFixed(1) + "%";
+        fill.style.height = (upShare * 100).toFixed(1) + "%";
         btn.appendChild(fill);
+        if (row && row.down && span) {
+          // Minutes down, to scale, but never thinner than a sliver: one minute in a day still shows.
+          var bad = el("span", { "class": "bad" });
+          bad.style.height = "max(3px, " + ((row.down / span) * 100).toFixed(2) + "%)";
+          btn.appendChild(bad);
+        }
       }
       var text = describe(d, key, row, kind);
       btn.setAttribute("aria-label", text);
@@ -330,7 +344,7 @@
           detail.textContent = t2;
         });
       })(btn, text);
-      if (kind !== "day") btn.disabled = kind === "future";
+      if (kind === "future") btn.disabled = true;
       buttons.push(btn);
       strip.appendChild(btn);
       if (key === c.key) { btn.setAttribute("aria-pressed", "true"); detail.textContent = text; }

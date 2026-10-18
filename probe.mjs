@@ -46,15 +46,23 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const SAMPLES = Number(process.env.SAMPLES || 45);
+const SAMPLES = Number(process.env.SAMPLES || 50);
 const MIN_SAMPLES = Number(process.env.MIN_SAMPLES || 3);
 export const HANDOFF_AFTER_MS = 3 * 60_000;
-const MAX_SAMPLING_MS = 48 * 60_000;
+const MAX_SAMPLING_MS = 52 * 60_000;
 const DRY_RUN = process.env.DRY_RUN === "1";
 const TIMEOUT_MS = 10_000;
 const RETRY_DELAY_MS = 15_000;
 const ZONE = "America/Chicago";
 export const MEASURED_SINCE = "2026-10-13";
+/**
+ * Full-strength measuring. Oct 13 and 14, 2026 were the monitor's first two days: GitHub started a
+ * run only every 10 to 25 minutes and each run sampled a few minutes, so those days reached 14 and
+ * 56 percent of their minutes. They stay in the record and on the page, hatched, but every figure
+ * counts from Oct 15, 2026, 00:00 Central (05:00 UTC), when runs began to overlap and coverage
+ * reached 99 percent. Nothing before this instant is counted as up or as down.
+ */
+export const COUNTED_FROM = "2026-10-15T05:00:00Z";
 
 const SUPABASE_URL = "https://eashcsdppfavsxpzyqkf.supabase.co";
 // The public client key: it ships inside every copy of the app and only allows
@@ -239,11 +247,13 @@ export function centralMonth(date) {
  * unavailable when any target was down in it (a minute where some targets were
  * measured and one was down still counts as unavailable).
  */
-export function tally(dayDocs) {
+export function tally(dayDocs, countedFromIso = COUNTED_FROM) {
   const months = {};
+  const countedFrom = countedFromIso ? Date.parse(countedFromIso) : -Infinity;
   for (const doc of dayDocs) {
     const base = Date.parse(`${doc.day}T00:00:00Z`);
     for (let m = 0; m < 1440; m++) {
+      if (base + m * 60_000 < countedFrom) continue;
       let anyDown = false;
       let allMeasured = true;
       for (const t of TARGETS) {
@@ -285,8 +295,9 @@ function minutesInCentralMonthSoFar(monthKey, now, sinceIso) {
   return { windowMinutes: Math.max(0, Math.ceil((to - from) / 60_000)), fullMonth: since <= start && now.getTime() >= end };
 }
 
-export function buildSummary(dayDocs, now, firstSampleIso) {
-  const months = tally(dayDocs);
+export function buildSummary(dayDocs, now, firstSampleIso, countedFromIso = COUNTED_FROM) {
+  const months = tally(dayDocs, countedFromIso);
+  const sinceIso = countedFromIso && Date.parse(countedFromIso) > Date.parse(firstSampleIso) ? countedFromIso : firstSampleIso;
   const thisKey = centralMonth(now);
   const lastDate = new Date(now.getTime());
   // Step back into the previous Central month.
@@ -295,7 +306,7 @@ export function buildSummary(dayDocs, now, firstSampleIso) {
   const describe = (key) => {
     const row = months[key];
     if (!row) return null;
-    const w = minutesInCentralMonthSoFar(key, now, firstSampleIso);
+    const w = minutesInCentralMonthSoFar(key, now, sinceIso);
     return {
       month: key,
       fullMonthMeasured: w.fullMonth,
@@ -308,6 +319,7 @@ export function buildSummary(dayDocs, now, firstSampleIso) {
   return {
     measuredSince: MEASURED_SINCE,
     firstSampleAt: firstSampleIso,
+    countedFrom: sinceIso,
     generatedAt: now.toISOString(),
     definition:
       "A minute is unavailable when the sign-in page, the admin workspace, a public registration form, an organization's public site, the app's server functions or the data service fails twice, 15 seconds apart, within that minute. Availability = minutes up / minutes measured. Months are Central time.",
