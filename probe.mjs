@@ -242,18 +242,49 @@ export function centralMonth(date) {
 }
 
 /**
+ * Planned maintenance windows, declared in data/maintenance.json (see
+ * declare-maintenance.mjs). Each window is { start, end, note, declaredAt }.
+ * Published policy: planned maintenance is announced on the status page in
+ * advance and is not counted as downtime; a window declared after it began is
+ * labelled "declared after the fact" on the page, and the commit that added it
+ * shows when.
+ */
+export function loadMaintenance(root = ROOT) {
+  const p = join(root, "data", "maintenance.json");
+  if (!existsSync(p)) return [];
+  try {
+    const doc = JSON.parse(readFileSync(p, "utf8"));
+    return (doc.windows || [])
+      .map((w) => ({ ...w, startMs: Date.parse(w.start), endMs: Date.parse(w.end) }))
+      .filter((w) => Number.isFinite(w.startMs) && Number.isFinite(w.endMs) && w.endMs > w.startMs);
+  } catch {
+    return [];
+  }
+}
+
+/** True when the minute starting at `ms` lies inside a declared window (start inclusive, end exclusive). */
+export function inMaintenance(ms, windows) {
+  for (const w of windows || []) if (ms >= w.startMs && ms < w.endMs) return true;
+  return false;
+}
+
+/**
  * Tally a set of day documents into per-Central-month totals.
  * A minute counts as measured when every target was measured in it, and as
  * unavailable when any target was down in it (a minute where some targets were
  * measured and one was down still counts as unavailable).
+ * A measured minute inside a declared maintenance window counts toward
+ * coverage (it was measured) and as maintenance, never as up or down, so it
+ * is left out of availability.
  */
-export function tally(dayDocs, countedFromIso = COUNTED_FROM) {
+export function tally(dayDocs, countedFromIso = COUNTED_FROM, windows = []) {
   const months = {};
   const countedFrom = countedFromIso ? Date.parse(countedFromIso) : -Infinity;
   for (const doc of dayDocs) {
     const base = Date.parse(`${doc.day}T00:00:00Z`);
     for (let m = 0; m < 1440; m++) {
-      if (base + m * 60_000 < countedFrom) continue;
+      const at = base + m * 60_000;
+      if (at < countedFrom) continue;
       let anyDown = false;
       let allMeasured = true;
       for (const t of TARGETS) {
@@ -263,20 +294,25 @@ export function tally(dayDocs, countedFromIso = COUNTED_FROM) {
       }
       if (!anyDown && !allMeasured) continue;
       // Hourly cache would be faster; 60 days x 1,440 minutes is small enough.
-      const key = centralMonth(new Date(base + m * 60_000));
-      const row = (months[key] ||= { measuredMinutes: 0, unavailableMinutes: 0 });
+      const key = centralMonth(new Date(at));
+      const row = (months[key] ||= { measuredMinutes: 0, unavailableMinutes: 0, maintenanceMinutes: 0 });
       row.measuredMinutes += 1;
-      if (anyDown) row.unavailableMinutes += 1;
+      if (inMaintenance(at, windows)) row.maintenanceMinutes += 1;
+      else if (anyDown) row.unavailableMinutes += 1;
     }
   }
   return months;
 }
 
-/** Percent up, rounded DOWN to two decimals so we never round in our favour. */
+/**
+ * Percent up, rounded DOWN to two decimals so we never round in our favour.
+ * Minutes inside declared maintenance are left out of the count entirely.
+ */
 export function availabilityPercent(row) {
-  if (!row || row.measuredMinutes === 0) return null;
-  const up = row.measuredMinutes - row.unavailableMinutes;
-  return Math.floor((up / row.measuredMinutes) * 10000) / 100;
+  const counted = row ? row.measuredMinutes - (row.maintenanceMinutes || 0) : 0;
+  if (!row || counted <= 0) return null;
+  const up = counted - row.unavailableMinutes;
+  return Math.floor((up / counted) * 10000) / 100;
 }
 
 function minutesInCentralMonthSoFar(monthKey, now, sinceIso) {
@@ -295,8 +331,8 @@ function minutesInCentralMonthSoFar(monthKey, now, sinceIso) {
   return { windowMinutes: Math.max(0, Math.ceil((to - from) / 60_000)), fullMonth: since <= start && now.getTime() >= end };
 }
 
-export function buildSummary(dayDocs, now, firstSampleIso, countedFromIso = COUNTED_FROM) {
-  const months = tally(dayDocs, countedFromIso);
+export function buildSummary(dayDocs, now, firstSampleIso, countedFromIso = COUNTED_FROM, windows = []) {
+  const months = tally(dayDocs, countedFromIso, windows);
   const sinceIso = countedFromIso && Date.parse(countedFromIso) > Date.parse(firstSampleIso) ? countedFromIso : firstSampleIso;
   const thisKey = centralMonth(now);
   const lastDate = new Date(now.getTime());
@@ -312,6 +348,7 @@ export function buildSummary(dayDocs, now, firstSampleIso, countedFromIso = COUN
       fullMonthMeasured: w.fullMonth,
       measuredMinutes: row.measuredMinutes,
       unavailableMinutes: row.unavailableMinutes,
+      maintenanceMinutes: row.maintenanceMinutes || 0,
       availabilityPercent: availabilityPercent(row),
       coveragePercent: w.windowMinutes ? Math.min(100, Math.floor((row.measuredMinutes / w.windowMinutes) * 1000) / 10) : null,
     };
@@ -322,7 +359,7 @@ export function buildSummary(dayDocs, now, firstSampleIso, countedFromIso = COUN
     countedFrom: sinceIso,
     generatedAt: now.toISOString(),
     definition:
-      "A minute is unavailable when the sign-in page, the admin workspace, a public registration form, an organization's public site, the app's server functions or the data service fails twice, 15 seconds apart, within that minute. Availability = minutes up / minutes measured. Months are Central time.",
+      "A minute is unavailable when the sign-in page, the admin workspace, a public registration form, an organization's public site, the app's server functions or the data service fails twice, 15 seconds apart, within that minute. Availability = minutes up / minutes measured, leaving out minutes inside planned maintenance declared in data/maintenance.json. Months are Central time.",
     thisMonth: describe(thisKey),
     lastMonth: describe(lastKey),
   };
@@ -377,7 +414,7 @@ export function applySamples(samples) {
     writeFileSync(dayPath(day), JSON.stringify(doc, null, 1) + "\n");
   }
   const now = new Date();
-  const summary = buildSummary(recentDayDocs(now), now, firstSampleIso() || now.toISOString());
+  const summary = buildSummary(recentDayDocs(now), now, firstSampleIso() || now.toISOString(), COUNTED_FROM, loadMaintenance());
   writeFileSync(join(ROOT, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
   return summary;
 }

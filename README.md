@@ -24,13 +24,38 @@ A check fails when the answer is not a normal page (HTTP 200), the expected word
 ## How availability is counted
 
 - A minute is **unavailable** when any of the six checks is down in that minute.
-- **Availability** for a month = minutes up divided by minutes measured, rounded down to two decimals. Months are Central time.
+- **Availability** for a month = minutes up divided by minutes measured, rounded down to two decimals, leaving out minutes inside declared planned maintenance. Months are Central time.
 - **Coverage** = minutes measured divided by minutes in the month since measuring began. GitHub starts the scheduled runs, and on a busy day it can start one late; minutes no run covered are counted as not measured, never as up.
+
+## How a day is shown
+
+The page colours each day (and each check's own row) the way GitHub's and Anthropic's status pages do, from the record alone:
+
+- **Major outage (red):** five or more minutes down in a row, or 30 or more in a day, when more than one check failed, or when the sign-in page or the data service failed on its own. On a check's own row, five in a row or 30 in a day.
+- **Partial outage (amber):** any other down minute: one to four minutes, or a single check failing while the others answered.
+- **Planned maintenance (blue):** a day with a declared window and no unplanned downtime.
+- **No downtime (green)**, **not measured (grey)**, the monitor's first days (hatched).
+
+Down minutes within five minutes of each other are one incident. Each incident is listed with its time, length, the checks that failed and, when one has been written, a plain-words note from `data/incidents.json` (matched by its first down minute, UTC). The raw failures stay listed underneath.
+
+## Planned maintenance
+
+Policy, published on the page: planned maintenance is announced there in advance and is not counted as downtime. Everything else counts, including minutes where only the monitor could not reach the site.
+
+Declare a window before a release train (times with their offset; -05:00 is Central daylight time, -06:00 Central standard time):
+
+```
+node declare-maintenance.mjs "2026-10-21T04:20:00-05:00" "2026-10-21T04:35:00-05:00" "Morning release, database update"
+```
+
+It adds the window to `data/maintenance.json` with the moment it was declared, commits and pushes to `main`; the page shows it at once and the probe leaves the window's minutes out of availability (they still count as measured). A window declared after it began is shown "declared after the fact", and the commit shows when. Only declare a window for planned work; an unplanned failure stays an incident.
 
 ## Where the record is
 
-- `index.html`: the status page. It shows only what the record shows: the one-sentence answer, this month's availability and coverage, a bar per day, and every recorded failure with its time in Central.
-- `summary.json`: this month so far and last month.
+- `index.html`: the status page. It shows only what the record shows: the one-sentence answer, this month's availability, incidents and planned maintenance, a bar per day for all of Team Scout and for each check, the incidents list, every recorded failure with its time in Central, and the share of minutes measured as a footnote.
+- `summary.json`: this month so far and last month (`maintenanceMinutes` are measured minutes inside declared windows).
+- `data/maintenance.json`: declared planned maintenance windows.
+- `data/incidents.json`: plain-words notes for incidents.
 - `data/YYYY/MM/YYYY-MM-DD.json`: one file per day (UTC). Each check has 1,440 characters, one per minute: `1` up, `0` down, `.` not measured. Every failure is listed with its time, the page and the answer received.
 
 The probe runs on GitHub Actions, separate from Vercel and Supabase, where Team Scout runs. Every result is a commit in this repository, so the record cannot be edited after the fact without it showing.

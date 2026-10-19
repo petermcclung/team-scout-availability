@@ -1,0 +1,10 @@
+{
+  "about": "What happened, in plain words, for incidents the probe recorded. The page finds the incident by time; the probe's own record (the day files) stays the source of every minute. Keyed by the first down minute, UTC.",
+  "notes": [
+    {
+      "start": "2026-10-16T12:40:00Z",
+      "text": "The registration form page took longer than 10 seconds to load, on the first try and again 15 seconds later. The sign-in page, the admin workspace, an organization's site, the app's server functions and the data service all answered in the same minute. The same page had needed its second try two minutes earlier. Nothing was being released or changed: the nearest releases went live at 4:03 AM and 9:22 AM, and the nearest database changes on record were at 4:48 AM and 8:57 AM. Neither our hosting provider nor our database provider reported an incident at that time. The page answered normally from the next minute on, with no change on our side.",
+      "written": "2026-10-19"
+    }
+  ]
+}

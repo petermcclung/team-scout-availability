@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeChar, tally, availabilityPercent, centralMonth, buildSummary, TARGETS, mergeSamples, emptyDay, shouldHandOff } from "./probe.mjs";
+import { mergeChar, tally, availabilityPercent, inMaintenance, centralMonth, buildSummary, TARGETS, mergeSamples, emptyDay, shouldHandOff } from "./probe.mjs";
 
 const blank = () => ".".repeat(1440);
 function day(dayKey, marks) {
@@ -21,18 +21,18 @@ test("down wins over up, up wins over unmeasured", () => {
 
 test("a minute with every target up is measured and available", () => {
   const months = tally([day("2026-10-14", [...allUp(600), ...allUp(601)])], null);
-  assert.deepEqual(months["2026-10"], { measuredMinutes: 2, unavailableMinutes: 0 });
+  assert.deepEqual(months["2026-10"], { measuredMinutes: 2, unavailableMinutes: 0, maintenanceMinutes: 0 });
 });
 
 test("one target down makes the whole minute unavailable", () => {
   const marks = [...allUp(600), ...TARGETS.map((t) => [t.key, 601, t.key === "registration_form" ? "0" : "1"])];
   const months = tally([day("2026-10-14", marks)], null);
-  assert.deepEqual(months["2026-10"], { measuredMinutes: 2, unavailableMinutes: 1 });
+  assert.deepEqual(months["2026-10"], { measuredMinutes: 2, unavailableMinutes: 1, maintenanceMinutes: 0 });
 });
 
 test("a down minute counts even when another target was not measured", () => {
   const months = tally([day("2026-10-14", [["data_service", 700, "0"]])], null);
-  assert.deepEqual(months["2026-10"], { measuredMinutes: 1, unavailableMinutes: 1 });
+  assert.deepEqual(months["2026-10"], { measuredMinutes: 1, unavailableMinutes: 1, maintenanceMinutes: 0 });
 });
 
 test("a partly measured minute with nothing down is not counted", () => {
@@ -114,7 +114,7 @@ test("two overlapping runs: union of minutes measured, a down seen by either run
   assert.equal(s[620], "0", "A's up does not hide B's down");
   assert.equal(doc.failures.length, 1);
   const months = tally([doc], null);
-  assert.deepEqual(months["2026-10"], { measuredMinutes: 45, unavailableMinutes: 1 });
+  assert.deepEqual(months["2026-10"], { measuredMinutes: 45, unavailableMinutes: 1, maintenanceMinutes: 0 });
 });
 
 test("the order overlapping runs land in does not change the record", () => {
@@ -159,5 +159,24 @@ test("minutes before COUNTED_FROM (the monitor's first two days) are kept in the
   assert.equal(s.thisMonth.measuredMinutes, 3, "Oct 14 minutes are not counted");
   assert.equal(s.thisMonth.unavailableMinutes, 0, "the Oct 14 down minute is not counted either");
   assert.equal(s.thisMonth.coveragePercent, 75, "3 of the 4 minutes since 05:00 UTC");
-  assert.deepEqual(tally(docs, null)["2026-10"], { measuredMinutes: 5, unavailableMinutes: 1 }, "the record itself keeps every minute");
+  assert.deepEqual(tally(docs, null)["2026-10"], { measuredMinutes: 5, unavailableMinutes: 1, maintenanceMinutes: 0 }, "the record itself keeps every minute");
+});
+
+test("a down minute inside declared maintenance is not counted as down, and is left out of availability", () => {
+  // 2026-10-20 09:00 to 09:02 UTC: three measured minutes, the middle one down.
+  const marks = [...allUp(540), ...TARGETS.map((t) => [t.key, 541, t.key === "sign_in" ? "0" : "1"]), ...allUp(542)];
+  const w = [{ startMs: Date.parse("2026-10-20T09:01:00Z"), endMs: Date.parse("2026-10-20T09:02:00Z") }];
+  const months = tally([day("2026-10-20", marks)], null, w);
+  assert.deepEqual(months["2026-10"], { measuredMinutes: 3, unavailableMinutes: 0, maintenanceMinutes: 1 });
+  assert.equal(availabilityPercent(months["2026-10"]), 100);
+  // Without the window the same minute counts as down.
+  const plain = tally([day("2026-10-20", marks)], null, []);
+  assert.deepEqual(plain["2026-10"], { measuredMinutes: 3, unavailableMinutes: 1, maintenanceMinutes: 0 });
+});
+
+test("a maintenance window's end is exclusive", () => {
+  const w = [{ startMs: Date.parse("2026-10-20T09:00:00Z"), endMs: Date.parse("2026-10-20T09:05:00Z") }];
+  assert.equal(inMaintenance(Date.parse("2026-10-20T09:00:00Z"), w), true);
+  assert.equal(inMaintenance(Date.parse("2026-10-20T09:04:00Z"), w), true);
+  assert.equal(inMaintenance(Date.parse("2026-10-20T09:05:00Z"), w), false);
 });

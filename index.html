@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Team Scout availability</title>
-<meta name="description" content="An independent, minute-by-minute record of whether Team Scout is up, checked from outside Team Scout's own hosting.">
+<meta name="description" content="Team Scout's availability, measured every minute from outside Team Scout's own hosting, with every incident and planned maintenance window.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=optional" rel="stylesheet">
@@ -18,9 +18,11 @@
     --navy: #151D35;
     --teal: #2098BD;
     --line: #E4E1DC;
-    --up: #15803D;
-    --down: #C62828;
-    --unmeasured: #DDD9D3;
+    --up: #2E9E5B;
+    --partial: #E3A008;
+    --major: #D64545;
+    --maint: #3B82F6;
+    --unmeasured: #D9D6D0;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -36,27 +38,33 @@
   .brand { font: 700 18px/1 "Space Grotesk", system-ui, sans-serif; letter-spacing: -0.01em; color: #fff; text-decoration: none; }
   .top a.repo { color: #CFE9F2; font-size: 14px; text-decoration: none; white-space: nowrap; }
   .top a.repo:hover { text-decoration: underline; }
-  h1, h2 { font-family: "Space Grotesk", system-ui, sans-serif; color: var(--navy); text-wrap: balance; letter-spacing: -0.01em; }
+  h1, h2, h3 { font-family: "Space Grotesk", system-ui, sans-serif; color: var(--navy); text-wrap: balance; letter-spacing: -0.01em; }
   h1 { font-size: clamp(28px, 6vw, 40px); line-height: 1.1; margin: 40px 0 12px; }
   h2 { font-size: 22px; line-height: 1.2; margin: 0 0 6px; }
+  h3 { font-size: 16px; margin: 0; }
   p { margin: 0 0 12px; text-wrap: pretty; }
-  .lede { font-size: 19px; color: var(--ink); max-width: 46ch; }
+  .lede { font-size: 19px; color: var(--ink); max-width: 52ch; }
   .muted { color: var(--ink-2); }
   .small { font-size: 14px; color: var(--ink-3); }
-  section { margin: 32px 0; }
+  section { margin: 28px 0; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(21,29,53,0.04); }
+  .policy { border-left: 3px solid var(--maint); background: var(--card); border-radius: 8px; padding: 12px 14px; margin: 16px 0 0; font-size: 15px; color: var(--ink-2); }
   .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
   .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
   .tile .k { font-size: 13px; color: var(--ink-3); font-weight: 500; }
   .tile .v { font: 700 30px/1.15 "Space Grotesk", system-ui, sans-serif; color: var(--navy); margin-top: 4px; white-space: nowrap; }
   .tile .n { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
   @media (max-width: 560px) { .tiles { grid-template-columns: 1fr; } .tile .v { font-size: 26px; } }
-  .strip { display: flex; gap: 3px; align-items: stretch; height: 56px; margin: 16px 0 6px; }
-  .day { flex: 1 1 0; min-width: 0; border: 0; padding: 0; border-radius: 3px; cursor: pointer; position: relative; overflow: hidden; background: var(--unmeasured); }
-  .day .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--up); }
-  .day .bad { position: absolute; left: 0; right: 0; bottom: 0; background: var(--down); }
+  .rowhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 18px; }
+  .rowhead .pct { font-size: 14px; color: var(--ink-2); white-space: nowrap; }
+  .strip { display: flex; gap: 3px; align-items: stretch; height: 44px; margin: 8px 0 4px; }
+  .strip.thin { height: 26px; gap: 2px; }
+  .day { flex: 1 1 0; min-width: 0; border: 0; padding: 0; border-radius: 3px; cursor: pointer; background: var(--up); }
+  .day.partial { background: var(--partial); }
+  .day.major { background: var(--major); }
+  .day.maint { background: var(--maint); }
+  .day.none { background: var(--unmeasured); }
   .day.trial { background: repeating-linear-gradient(135deg, var(--unmeasured) 0 3px, var(--card) 3px 6px); }
-  .day.trial .fill { background: #AEB7C4; }
   .day.before { background: transparent; border: 1px dashed var(--line); cursor: default; }
   .day.future { background: transparent; border: 1px solid var(--line); cursor: default; }
   .day[aria-pressed="true"] { outline: 2px solid var(--navy); outline-offset: 2px; }
@@ -65,7 +73,21 @@
   .detail { margin-top: 12px; min-height: 1.6em; font-size: 15px; }
   .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 13px; color: var(--ink-2); }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .components { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 4px; }
+  .foot { font-size: 13px; color: var(--ink-3); margin: 10px 2px 0; }
+  ul.events { list-style: none; margin: 8px 0 0; padding: 0; }
+  ul.events li { border-top: 1px solid var(--line); padding: 14px 0; }
+  ul.events li:first-child { border-top: 0; padding-top: 4px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-right: 8px; vertical-align: 1px; }
+  .tag.partial { background: #FDF3D7; color: #7A5300; }
+  .tag.major { background: #FBE3E3; color: #8E1F1F; }
+  .tag.maint { background: #E3EDFD; color: #1D4E9E; }
+  .tag.resolved { background: #E3F4EA; color: #1C6B3C; }
+  .ev-when { font-weight: 600; color: var(--navy); }
+  .ev-body { margin: 6px 0 0; color: var(--ink-2); font-size: 15px; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: #17708E; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
   th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-weight: 600; color: var(--ink-2); font-size: 13px; }
   td.when { white-space: nowrap; }
@@ -75,6 +97,7 @@
     thead { display: none; }
     tr { border-bottom: 1px solid var(--line); padding: 10px 0; }
     td { border: 0; padding: 2px 0; }
+    td.when { white-space: normal; }
   }
   dl.defs { margin: 0; }
   dl.defs dt { font-weight: 600; color: var(--navy); margin-top: 12px; }
@@ -82,7 +105,6 @@
   dl.defs dd { margin: 2px 0 0; color: var(--ink-2); }
   footer { border-top: 1px solid var(--line); margin-top: 48px; padding: 20px 0 40px; }
   a { color: #17708E; }
-  .err { color: var(--down); }
 </style>
 </head>
 <body>
@@ -97,31 +119,42 @@
   <h1>Team Scout availability</h1>
   <p class="lede" id="headline">Loading the record.</p>
   <p class="small" id="updated"></p>
+  <p class="policy">Planned maintenance is announced here in advance and is not counted as downtime. Everything else counts, including minutes where only our monitor could not reach the site.</p>
 
   <div class="tiles" id="tiles" aria-live="polite"></div>
 
   <section>
     <div class="card">
       <h2 id="strip-title">This month, day by day</h2>
-      <p class="small">Times are Central. Each bar is one day. Green is the share of the day's minutes the monitor measured and found up. Red is minutes down, drawn no thinner than a sliver so a single minute still shows. Grey is minutes no check reached.</p>
-      <div class="strip" id="strip" role="group" aria-label="Days of the month"></div>
+      <p class="small">Times are Central. Each bar is one day. Select a day to see what happened.</p>
+      <div class="rowhead"><h3>All of Team Scout</h3><span class="pct" id="overall-pct"></span></div>
+      <div class="strip" id="strip" role="group" aria-label="Days of the month, all of Team Scout"></div>
       <div class="axis" id="axis"></div>
       <p class="detail" id="detail"></p>
       <div class="legend">
-        <span><i style="background:var(--up)"></i>Minutes measured and up</span>
-        <span><i style="background:var(--down)"></i>Minutes down (never thinner than a sliver)</span>
+        <span><i style="background:var(--up)"></i>No downtime</span>
+        <span><i style="background:var(--partial)"></i>Partial outage</span>
+        <span><i style="background:var(--major)"></i>Major outage</span>
+        <span><i style="background:var(--maint)"></i>Planned maintenance</span>
         <span><i style="background:var(--unmeasured)"></i>Not measured</span>
-        <span><i style="background:repeating-linear-gradient(135deg, var(--unmeasured) 0 2px, var(--card) 2px 4px)"></i>Monitor's first days, shown but not counted</span>
-        <span><i style="border:1px dashed var(--line)"></i>Before the monitor existed</span>
+        <span><i style="background:repeating-linear-gradient(135deg, var(--unmeasured) 0 2px, var(--card) 2px 4px)"></i>Monitor's first days, not counted</span>
       </div>
+      <div class="components" id="components"></div>
+    </div>
+    <p class="foot" id="coverage-note"></p>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Incidents</h2>
+      <div id="incidents"><p class="muted">Loading.</p></div>
     </div>
   </section>
 
   <section>
     <div class="card">
-      <h2>Every recorded failure</h2>
-      <p class="small">A check is recorded as down only when it fails twice, 15 seconds apart.</p>
-      <div id="failures"><p class="muted">Loading.</p></div>
+      <h2>Planned maintenance</h2>
+      <div id="maintenance"><p class="muted">Loading.</p></div>
     </div>
   </section>
 
@@ -134,9 +167,15 @@
         <dt>A minute down</dt>
         <dd>Any one of those six fails twice, 15 seconds apart, within the minute: no normal answer, the expected words missing, or nothing back within 10 seconds.</dd>
         <dt>Availability</dt>
-        <dd>Minutes up divided by minutes measured, rounded down to two decimals. Months are Central time.</dd>
-        <dt>Coverage</dt>
-        <dd>Minutes measured divided by the minutes in the month since full-strength measuring began on October 15, 2026. A minute no check reached is counted as not measured, never as up. The monitor's first two days, October 13 and 14, reached only part of each hour while its runs were still short; they stay in the record and show hatched on the strip, and no minute of them counts as up or as down.</dd>
+        <dd>Minutes up divided by minutes measured, rounded down to two decimals. Months are Central time. Minutes inside planned maintenance are left out.</dd>
+        <dt>Major outage</dt>
+        <dd>Five or more minutes down in a row, or 30 or more minutes down in a day, when more than one check failed, or when the sign-in page or the data service failed on its own. These are the failures that stop people using Team Scout.</dd>
+        <dt>Partial outage</dt>
+        <dd>Any other minute down: one to four minutes, or a single check failing while the others answered.</dd>
+        <dt>Planned maintenance</dt>
+        <dd>A window posted on this page before it starts, with what it is for. Its minutes are measured as always but not counted. A window posted after it began is marked "declared after the fact", and the public record shows when it was posted.</dd>
+        <dt>Measured minutes</dt>
+        <dd>Minutes measured divided by the minutes in the month since full-strength measuring began on October 15, 2026. A minute no check reached is counted as not measured, never as up. The monitor's first two days, October 13 and 14, reached only part of each hour; they stay in the record and show hatched, and no minute of them counts.</dd>
         <dt>Where the checks run</dt>
         <dd>On GitHub's computers, separate from where Team Scout runs, so an outage on our side cannot stop the record being written. Every result is a commit in a public repository, so the record cannot be changed after the fact without it showing.</dd>
       </dl>
@@ -149,7 +188,6 @@
     The record, the probe and its tests: <a href="https://github.com/petermcclung/team-scout-availability">github.com/petermcclung/team-scout-availability</a>.
   </div>
 </footer>
-
 <script>
 (function () {
   "use strict";
@@ -164,10 +202,14 @@
   ];
   var NAMES = {};
   TARGETS.forEach(function (t) { NAMES[t[0]] = t[1]; });
+  var CORE = { sign_in: true, data_service: true }; // a failure of either alone stops people using Team Scout
+  var MERGE_GAP = 5; // down minutes this close together are one incident
 
   var monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   var partsFmt = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   var whenFmt = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  var timeFmt = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
+  var dayFmt = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, month: "long", day: "numeric", year: "numeric" });
 
   function central(ms) {
     var o = {};
@@ -177,6 +219,7 @@
   function pad(n) { return (n < 10 ? "0" : "") + n; }
   function fmtInt(n) { return n.toLocaleString("en-US"); }
   function nb(s) { return s.replace(/ (\d)/g, " $1"); }
+  function noYear(ms) { return dayFmt.format(new Date(ms)).replace(/, \d{4}$/, ""); }
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
     if (attrs) Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
@@ -185,6 +228,29 @@
   }
   function getJSON(path) {
     return fetch(path, { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+  function words(n) { return ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"][n] || String(n); }
+  function pct(up, n) { return n ? Math.floor((up / n) * 10000) / 100 : null; }
+  function duration(min) {
+    if (min < 60) return min + (min === 1 ? " minute" : " minutes");
+    var h = Math.floor(min / 60), m = min % 60;
+    return h + (h === 1 ? " hour" : " hours") + (m ? " " + m + (m === 1 ? " minute" : " minutes") : "");
+  }
+  // "7:40 to 7:41 AM" or "11:50 AM to 12:10 PM"
+  function span(a, b) {
+    var x = timeFmt.format(new Date(a)), y = timeFmt.format(new Date(b));
+    var mx = x.slice(-2), my = y.slice(-2);
+    return (mx === my ? x.slice(0, -3) : x) + " to " + y;
+  }
+  function plainError(e) {
+    if (!e) return "failed";
+    if (/no answer in/.test(e)) return "did not answer within 10 seconds";
+    var h = /^HTTP (\d+)/.exec(e); if (h) return "answered with an error (HTTP " + h[1] + ")";
+    if (/^missing text/.test(e)) return "loaded without its expected content";
+    if (/^shows /.test(e)) return "showed a notice instead of its content";
+    if (/^ended at/.test(e)) return "sent visitors to the wrong address";
+    if (/gateway/.test(e)) return "answered with a gateway error page";
+    return "could not be reached (" + e + ")";
   }
 
   // First and last instant of a Central month, found by stepping minutes near the UTC boundary.
@@ -200,16 +266,19 @@
     return { start: start, end: end }; // end is exclusive
   }
 
-  Promise.all([getJSON("summary.json")]).then(function (res) {
+  Promise.all([getJSON("summary.json"), getJSON("data/maintenance.json"), getJSON("data/incidents.json")]).then(function (res) {
     var summary = res[0];
     if (!summary) { document.getElementById("headline").textContent = "The record could not be loaded. The full record is on GitHub."; return; }
+    var windows = ((res[1] && res[1].windows) || []).map(function (w) {
+      return { start: Date.parse(w.start), end: Date.parse(w.end), note: w.note || "", declaredAt: Date.parse(w.declaredAt), afterTheFact: !!w.afterTheFact };
+    }).filter(function (w) { return w.start < w.end; });
+    var notes = ((res[2] && res[2].notes) || []).map(function (n) { return { start: Date.parse(n.start), text: n.text || "" }; });
     var now = Date.parse(summary.generatedAt) || Date.now();
     var c = central(now);
     var b = monthBounds(c.y, c.m);
     var firstSample = Date.parse(summary.firstSampleAt);
     var countedFrom = Date.parse(summary.countedFrom) || firstSample;
 
-    // UTC day files that overlap this Central month, up to today.
     var files = [];
     var from = new Date(Math.max(b.start, firstSample || b.start));
     for (var t = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()); t < b.end && t <= now; t += 86400000) {
@@ -217,36 +286,35 @@
       files.push("data/" + iso.slice(0, 4) + "/" + iso.slice(5, 7) + "/" + iso + ".json");
     }
     return Promise.all(files.map(getJSON)).then(function (docs) {
-      render(summary, docs.filter(Boolean), c, b, now, firstSample, countedFrom);
+      render(summary, docs.filter(Boolean), c, b, now, firstSample, countedFrom, windows, notes);
     });
   });
 
-  function render(summary, docs, c, b, now, firstSample, countedFrom) {
-    var monthLabel = monthNames[c.m - 1] + " " + c.y;
-    var tm = summary.thisMonth, lm = summary.lastMonth;
+  function inWindow(ms, windows) {
+    for (var i = 0; i < windows.length; i++) if (ms >= windows[i].start && ms < windows[i].end) return windows[i];
+    return null;
+  }
 
-    // Per Central day tally, the same rule as the probe's summary.
-    var days = {};
+  function render(summary, docs, c, b, now, firstSample, countedFrom, windows, notes) {
+    var monthLabel = monthNames[c.m - 1] + " " + c.y;
+    var monthShort = monthNames[c.m - 1];
+    var tm = summary.thisMonth;
+    var N = Math.round((b.end - b.start) / 60000);
+
+    // Minute grid for the month: per check, -1 not measured, 1 up, 0 down.
+    var grid = {};
+    TARGETS.forEach(function (tg) { grid[tg[0]] = new Int8Array(N).fill(-1); });
     var failures = [];
     docs.forEach(function (doc) {
       var base = Date.parse(doc.day + "T00:00:00Z");
-      for (var h = 0; h < 24; h++) {
-        var hourMs = base + h * 3600000;
-        if (hourMs + 3600000 <= b.start || hourMs >= b.end) continue;
-        var key = central(hourMs).key;
-        var row = days[key] || (days[key] = { measured: 0, down: 0 });
-        for (var mm = 0; mm < 60; mm++) {
-          var i = h * 60 + mm;
-          var anyDown = false, all = true;
-          for (var k = 0; k < TARGETS.length; k++) {
-            var s = doc.targets[TARGETS[k][0]];
-            var ch = s ? s.charAt(i) : ".";
-            if (ch === "0") anyDown = true;
-            if (ch !== "0" && ch !== "1") all = false;
-          }
-          if (!anyDown && !all) continue;
-          row.measured++;
-          if (anyDown) row.down++;
+      for (var m = 0; m < 1440; m++) {
+        var at = base + m * 60000;
+        if (at < b.start || at >= b.end) continue;
+        var idx = (at - b.start) / 60000;
+        for (var k = 0; k < TARGETS.length; k++) {
+          var s = doc.targets[TARGETS[k][0]];
+          var ch = s ? s.charAt(m) : ".";
+          if (ch === "1") grid[TARGETS[k][0]][idx] = 1; else if (ch === "0") grid[TARGETS[k][0]][idx] = 0;
         }
       }
       (doc.failures || []).forEach(function (f) {
@@ -254,27 +322,124 @@
         if (at >= b.start && at < b.end) failures.push(f);
       });
     });
+    failures.sort(function (a, z) { return a.at < z.at ? -1 : a.at > z.at ? 1 : 0; });
 
-    // Headline: only what the record shows.
-    var thisDown = tm ? tm.unavailableMinutes : 0;
-    var lastDown = lm ? lm.unavailableMinutes : 0;
-    var startedThisOrLastMonth = central(countedFrom).monthKey === c.monthKey || (lm && central(countedFrom).monthKey === lm.month);
-    var dayFmt = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, month: "long", day: "numeric", year: "numeric" });
-    var startDay = dayFmt.format(new Date(countedFrom));
-    var noYear = function (ms) { return dayFmt.format(new Date(ms)).replace(/, \d{4}$/, ""); };
-    var trialNote = countedFrom > firstSample ? " The monitor's first days, " + noYear(firstSample) + " through " + noYear(countedFrom - 86400000) + ", ran at partial strength and are shown hatched, not counted." : "";
-    var head;
-    if (thisDown === 0 && lastDown === 0 && startedThisOrLastMonth) {
-      head = "Our independent monitor has recorded no minute down since full-strength measuring began on " + startDay + ".";
-    } else if (thisDown === 0) {
-      head = "Our independent monitor has recorded no minute down in " + monthLabel + " so far.";
-    } else {
-      head = "In " + monthLabel + ", the monitor recorded " + fmtInt(thisDown) + (thisDown === 1 ? " minute" : " minutes") + " when Team Scout was unavailable. Each failure is listed below.";
+    // Central day of every minute of the month, computed once per hour.
+    var dayOf = new Array(N);
+    for (var hi = 0; hi < N; hi += 60) {
+      var hk = central(b.start + hi * 60000).key;
+      for (var mi = hi; mi < Math.min(N, hi + 60); mi++) dayOf[mi] = hk;
     }
-    document.getElementById("headline").textContent = nb(head + trialNote);
+
+    function minuteState(i) {
+      var down = [], all = true;
+      for (var k = 0; k < TARGETS.length; k++) {
+        var v = grid[TARGETS[k][0]][i];
+        if (v === 0) down.push(TARGETS[k][0]);
+        if (v === -1) all = false;
+      }
+      return { down: down, measured: down.length > 0 || all };
+    }
+
+    // Incidents: unplanned down minutes, grouped when they fall within MERGE_GAP minutes of each other.
+    var incidents = [], cur = null, maintDown = 0;
+    var countedIdx = Math.max(0, Math.ceil((countedFrom - b.start) / 60000));
+    for (var i = 0; i < N; i++) {
+      var at = b.start + i * 60000;
+      if (at > now) break;
+      var st = minuteState(i);
+      if (!st.down.length) continue;
+      if (inWindow(at, windows)) { if (i >= countedIdx) maintDown++; continue; }
+      if (cur && i - cur.lastIdx <= MERGE_GAP) {
+        cur.lastIdx = i; cur.down++;
+        cur.run = i - cur.prevIdx === 1 ? cur.run + 1 : 1; cur.prevIdx = i; cur.longest = Math.max(cur.longest, cur.run);
+        st.down.forEach(function (k) { cur.checks[k] = true; }); if (st.down.length > 1) cur.multi = true;
+      } else {
+        cur = { firstIdx: i, lastIdx: i, prevIdx: i, run: 1, longest: 1, down: 1, checks: {}, multi: st.down.length > 1 };
+        st.down.forEach(function (k) { cur.checks[k] = true; });
+        incidents.push(cur);
+      }
+    }
+    var dayDown = {};
+    incidents.forEach(function (inc) {
+      inc.start = b.start + inc.firstIdx * 60000;
+      inc.end = b.start + (inc.lastIdx + 1) * 60000;
+      inc.dayKey = central(inc.start).key;
+      inc.keys = Object.keys(inc.checks);
+      inc.serious = inc.multi || inc.keys.length > 1 || inc.keys.some(function (k) { return CORE[k]; });
+      dayDown[inc.dayKey] = (dayDown[inc.dayKey] || 0) + inc.down;
+      var after = inc.lastIdx + 1;
+      inc.resolved = after < N && b.start + after * 60000 <= now && minuteState(after).measured && !minuteState(after).down.length;
+      inc.trial = inc.start < countedFrom;
+    });
+    incidents.forEach(function (inc) {
+      inc.severity = inc.serious && (inc.longest >= 5 || inc.down >= 30 || (dayDown[inc.dayKey] || 0) >= 30) ? "major" : "partial";
+      var others = TARGETS.length - inc.keys.length;
+      var parts = inc.keys.map(function (k) {
+        var fs = failures.filter(function (f) { var a = Date.parse(f.at); return f.target === k && a >= inc.start && a < inc.end; });
+        var errs = fs.length ? fs[0] : null;
+        var e1 = errs && errs.first && errs.first.error, e2 = errs && errs.second && errs.second.error;
+        var how = plainError(e2 || e1);
+        return "The " + NAMES[k].charAt(0).toLowerCase() + NAMES[k].slice(1) + " check " + how + (e1 && e2 ? ", on the first try and again 15 seconds later" : "");
+      });
+      var auto = parts.join(". ") + "." + (inc.keys.length === 1 ? " The other " + (others === 5 ? "five" : others) + " checks answered." : "");
+      var note = notes.filter(function (n) { return n.start >= inc.start && n.start < inc.end; })[0];
+      inc.text = note ? note.text : auto;
+      inc.label = (inc.severity === "major" ? "Major outage" : "Partial outage") + ", " + duration(inc.down);
+    });
+
+    // Per Central day: measured minutes, worst severity, maintenance.
+    var days = {};
+    var countedKeyEarly = central(countedFrom).key;
+    for (var j = 0; j < N; j++) {
+      var at2 = b.start + j * 60000;
+      if (at2 > now) break;
+      var key = dayOf[j];
+      var row = days[key] || (days[key] = { measured: 0, span: 0 });
+      if (at2 >= (key < countedKeyEarly ? firstSample : countedFrom) - 59999) row.span++;
+      if (minuteState(j).measured) row.measured++;
+    }
+    incidents.forEach(function (inc) {
+      var r = days[inc.dayKey] || (days[inc.dayKey] = { measured: 0, span: 0 });
+      (r.incidents || (r.incidents = [])).push(inc);
+      if (inc.severity === "major") r.severity = "major"; else if (r.severity !== "major") r.severity = "partial";
+    });
+    windows.forEach(function (w) {
+      for (var t2 = w.start; t2 < w.end; t2 += 60000) {
+        var r = days[central(t2).key]; if (!r) continue;
+        if ((r.windows || (r.windows = [])).indexOf(w) < 0) r.windows.push(w);
+      }
+    });
+
+    // Availability per check (since full-strength measuring, maintenance left out).
+    function checkStats(k) {
+      var n = 0, d = 0;
+      for (var i = countedIdx; i < N; i++) {
+        var at = b.start + i * 60000; if (at > now) break;
+        var v = grid[k][i]; if (v === -1 || inWindow(at, windows)) continue;
+        n++; if (v === 0) d++;
+      }
+      return { measured: n, down: d, pct: pct(n - d, n) };
+    }
+
+    // Headline.
+    var counted = incidents.filter(function (x) { return !x.trial; });
+    var major = counted.filter(function (x) { return x.severity === "major"; });
+    var avail = tm && tm.availabilityPercent != null ? tm.availabilityPercent : null;
+    var head;
+    if (avail == null) head = "Nothing measured in " + monthLabel + " yet.";
+    else if (!counted.length) head = "Team Scout was available every minute our monitor measured in " + monthLabel + ".";
+    else {
+      var first = counted[0];
+      head = "Team Scout was available " + avail + "% of the minutes measured in " + monthLabel + ". " +
+        (counted.length === 1
+          ? "One " + first.severity + " outage, " + duration(first.down) + " on " + noYear(first.start) + (first.resolved ? ", resolved." : ".")
+          : words(counted.length) + " incidents, " + (major.length ? words(major.length) .toLowerCase() + " of them major" : "none of them major") + ", each listed below.");
+    }
+    document.getElementById("headline").textContent = nb(head);
     document.getElementById("updated").textContent = "Record updated " + whenFmt.format(new Date(summary.generatedAt)) + " Central.";
 
-    // Tiles.
+    // Tiles: availability is the headline; coverage is a footnote.
     var tiles = document.getElementById("tiles");
     function tile(k, v, n) {
       var d = el("div", { "class": "tile" });
@@ -283,82 +448,130 @@
       d.appendChild(el("div", { "class": "n" }, n));
       tiles.appendChild(d);
     }
-    if (tm) {
-      tile("Availability, " + monthLabel, tm.availabilityPercent + "%", "of the minutes measured");
-      tile("Coverage, " + monthLabel, tm.coveragePercent + "%", "of the minutes since " + startDay.replace(/, \d{4}$/, ""));
-    } else {
-      tile("Availability, " + monthLabel, "Not yet", "no minute measured this month yet");
-      tile("Coverage, " + monthLabel, "0%", "of the month's minutes so far");
-    }
-    if (lm) {
-      tile("Availability, " + monthNames[+lm.month.slice(5) - 1] + " " + lm.month.slice(0, 4), lm.availabilityPercent + "%", "coverage " + lm.coveragePercent + "%" + (lm.fullMonthMeasured ? ", whole month" : ", from the day measuring began"));
-    } else {
-      tile("Full-strength measuring began", startDay, "six checks every minute since then");
+    tile("Availability, " + monthLabel, avail != null ? avail + "%" : "Not yet", "of the minutes measured");
+    var totalDown = counted.reduce(function (a, x) { return a + x.down; }, 0);
+    tile("Incidents, " + monthLabel, String(counted.length), counted.length ? duration(totalDown) + " in all, " + (major.length ? major.length + " major" : "none major") : "no minute down");
+    var monthWindows = windows.filter(function (w) { return w.end > b.start && w.start < b.end; });
+    var maintMin = monthWindows.reduce(function (a, w) { return a + Math.round((w.end - w.start) / 60000); }, 0);
+    tile("Planned maintenance, " + monthShort, monthWindows.length ? duration(maintMin) : "None", monthWindows.length ? monthWindows.length + (monthWindows.length === 1 ? " window" : " windows") + ", not counted" : "no window declared");
+
+    // Coverage footnote.
+    if (tm && tm.coveragePercent != null) {
+      document.getElementById("coverage-note").textContent = nb("Measured " + tm.coveragePercent + "% of " + monthShort + "'s minutes since " + noYear(countedFrom) + ". The monitor runs on GitHub's schedule, which sometimes starts a run a few minutes late; a minute no run reached is left out, never counted as up.");
     }
 
-    // Day strip.
+    // Day strips.
     document.getElementById("strip-title").textContent = monthLabel + ", day by day";
-    var strip = document.getElementById("strip");
     var detail = document.getElementById("detail");
     var daysInMonth = new Date(Date.UTC(c.y, c.m, 0)).getUTCDate();
     var firstKey = central(firstSample).key;
     var countedKey = central(countedFrom).key;
     var buttons = [];
-    function describe(d, key, row, kind) {
-      var label = monthNames[c.m - 1] + " " + d;
+
+    function dayKind(key) { return key < firstKey ? "before" : (key < countedKey ? "trial" : (key > c.key ? "future" : "day")); }
+
+    function describeDay(d, key) {
+      var label = monthShort + " " + d;
+      var kind = dayKind(key), row = days[key];
       if (kind === "before") return label + ": before the monitor existed.";
       if (kind === "future") return label + ": still to come.";
-      var span = minutesInCentralDay(key, kind === "trial" ? firstSample : countedFrom, now);
-      if (!row || row.measured === 0) return label + ": not measured.";
-      var pct = Math.floor(Math.min(1, row.measured / span) * 100);
-      if (kind === "trial") return nb(label + ": one of the monitor's first days. Its runs were still short, so it reached " + pct + " percent of minutes" + (row.down ? ", " + fmtInt(row.down) + " down" : "") + ". Shown, not counted.");
-      var txt = label + ": " + pct + " percent of minutes measured" + (key === c.key ? " so far" : "");
-      txt += row.down ? ", " + fmtInt(row.down) + (row.down === 1 ? " minute" : " minutes") + " down." : ", no minute down.";
-      return nb(txt);
+      if (!row || !row.measured) return label + ": not measured.";
+      var share = Math.floor(Math.min(1, row.measured / Math.max(1, row.span)) * 100);
+      if (kind === "trial") return nb(label + ": one of the monitor's first days. Its runs were still short, so it reached " + share + "% of minutes. Shown, not counted.");
+      var bits = [];
+      (row.incidents || []).forEach(function (inc) {
+        bits.push(inc.label + ", " + span(inc.start, inc.end) + " Central. " + inc.text + (inc.resolved ? " Resolved." : ""));
+      });
+      (row.windows || []).forEach(function (w) {
+        bits.push("Planned maintenance, " + span(w.start, w.end) + " Central: " + w.note + (w.afterTheFact ? " (declared after the fact)." : ".") + " Not counted.");
+      });
+      if (!bits.length) bits.push("No downtime recorded" + (key === c.key ? " so far" : "") + ".");
+      return nb(label + ": " + bits.join(" ") + " " + share + "% of minutes measured.");
     }
+
+    function dayClass(key, row, kind, sev) {
+      if (kind !== "day") return "day " + kind;
+      if (!row || !row.measured) return "day none";
+      if (sev) return "day " + sev;
+      if (row.windows && row.windows.length) return "day maint";
+      return "day";
+    }
+
+    function select(btn, text) {
+      buttons.forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
+      btn.setAttribute("aria-pressed", "true");
+      detail.textContent = text;
+    }
+
+    var strip = document.getElementById("strip");
     for (var d = 1; d <= daysInMonth; d++) {
-      var key = c.y + "-" + pad(c.m) + "-" + pad(d);
-      var kind = key < firstKey ? "before" : (key < countedKey ? "trial" : (key > c.key ? "future" : "day"));
-      var row = days[key];
-      var btn = el("button", { "class": "day" + (kind !== "day" ? " " + kind : ""), type: "button", "aria-pressed": "false" });
-      if (kind === "day" || kind === "trial") {
-        var span = minutesInCentralDay(key, kind === "trial" ? firstSample : countedFrom, now);
-        var upShare = row && span ? Math.min(1, (row.measured - row.down) / span) : 0;
-        var fill = el("span", { "class": "fill" });
-        fill.style.height = (upShare * 100).toFixed(1) + "%";
-        btn.appendChild(fill);
-        if (row && row.down && span) {
-          // Minutes down, to scale, but never thinner than a sliver: one minute in a day still shows.
-          var bad = el("span", { "class": "bad" });
-          bad.style.height = "max(3px, " + ((row.down / span) * 100).toFixed(2) + "%)";
-          btn.appendChild(bad);
-        }
-      }
-      var text = describe(d, key, row, kind);
-      btn.setAttribute("aria-label", text);
-      btn.title = text;
-      (function (b2, t2) {
-        b2.addEventListener("click", function () {
-          buttons.forEach(function (x) { x.setAttribute("aria-pressed", "false"); });
-          b2.setAttribute("aria-pressed", "true");
-          detail.textContent = t2;
-        });
-      })(btn, text);
-      if (kind === "future") btn.disabled = true;
+      var key2 = c.y + "-" + pad(c.m) + "-" + pad(d);
+      var kind = dayKind(key2), row2 = days[key2];
+      var text = describeDay(d, key2);
+      var btn = el("button", { "class": dayClass(key2, row2, kind, row2 && row2.severity), type: "button", "aria-pressed": "false", "aria-label": text, title: text });
+      (function (b2, t2) { b2.addEventListener("click", function () { select(b2, t2); }); })(btn, text);
+      if (kind === "future" || kind === "before") btn.disabled = true;
       buttons.push(btn);
       strip.appendChild(btn);
-      if (key === c.key) { btn.setAttribute("aria-pressed", "true"); detail.textContent = text; }
+      if (key2 === c.key) { btn.setAttribute("aria-pressed", "true"); detail.textContent = text; }
     }
     var axis = document.getElementById("axis");
-    [1, 15, daysInMonth].forEach(function (n) { axis.appendChild(el("span", null, monthNames[c.m - 1].slice(0, 3) + " " + n)); });
+    [1, 15, daysInMonth].forEach(function (n) { axis.appendChild(el("span", null, monthShort.slice(0, 3) + " " + n)); });
+    if (avail != null) document.getElementById("overall-pct").textContent = avail + "% available";
 
-    // Failures.
-    var box = document.getElementById("failures");
+    // One row per check, GitHub-style.
+    var comps = document.getElementById("components");
+    TARGETS.forEach(function (tg) {
+      var k = tg[0], stats = checkStats(k);
+      var head = el("div", { "class": "rowhead" });
+      head.appendChild(el("h3", null, tg[1]));
+      head.appendChild(el("span", { "class": "pct" }, stats.pct != null ? stats.pct + "% available" : "not measured"));
+      comps.appendChild(head);
+      var st2 = el("div", { "class": "strip thin", role: "group", "aria-label": tg[1] + ", days of the month" });
+      for (var d = 1; d <= daysInMonth; d++) {
+        var key3 = c.y + "-" + pad(c.m) + "-" + pad(d);
+        var kind3 = dayKind(key3), row3 = days[key3];
+        var sev = null, mins = 0, first = null, last = null, run = 0, longest = 0;
+        if (kind3 === "day" && row3) {
+          for (var i = 0; i < N; i++) {
+            var at = b.start + i * 60000; if (at > now) break;
+            if (dayOf[i] !== key3) continue;
+            if (grid[k][i] === 0 && !inWindow(at, windows)) { mins++; run++; longest = Math.max(longest, run); if (first == null) first = at; last = at + 60000; } else run = 0;
+          }
+          if (mins) sev = longest >= 5 || mins >= 30 ? "major" : "partial";
+        }
+        var text3 = kind3 !== "day" ? describeDay(d, key3) : (monthShort + " " + d + ", " + tg[1].toLowerCase() + ": " + (mins ? (sev === "major" ? "Major outage, " : "Partial outage, ") + duration(mins) + ", " + span(first, last) + " Central." : (row3 && row3.measured ? "no downtime recorded." : "not measured.")));
+        var bt = el("button", { "class": dayClass(key3, row3, kind3, sev), type: "button", "aria-pressed": "false", "aria-label": nb(text3), title: nb(text3) });
+        (function (b2, t2) { b2.addEventListener("click", function () { select(b2, t2); }); })(bt, nb(text3));
+        if (kind3 === "future" || kind3 === "before") bt.disabled = true;
+        buttons.push(bt);
+        st2.appendChild(bt);
+      }
+      comps.appendChild(st2);
+    });
+
+    // Incidents list.
+    var box = document.getElementById("incidents");
     box.textContent = "";
-    if (!failures.length) {
-      box.appendChild(el("p", { "class": "muted" }, "No failure recorded in " + monthLabel + "."));
+    if (!incidents.length) {
+      box.appendChild(el("p", { "class": "muted" }, "No incident in " + monthLabel + "."));
     } else {
-      failures.sort(function (a, z) { return a.at < z.at ? -1 : a.at > z.at ? 1 : 0; });
+      var ul = el("ul", { "class": "events" });
+      incidents.slice().reverse().forEach(function (inc) {
+        var li = el("li");
+        var top = el("div");
+        top.appendChild(el("span", { "class": "tag " + inc.severity }, inc.severity === "major" ? "Major outage" : "Partial outage"));
+        if (inc.resolved) top.appendChild(el("span", { "class": "tag resolved" }, "Resolved"));
+        top.appendChild(el("span", { "class": "ev-when" }, nb(noYear(inc.start) + ", " + span(inc.start, inc.end) + " Central, " + duration(inc.down))));
+        li.appendChild(top);
+        li.appendChild(el("p", { "class": "ev-body" }, inc.keys.map(function (k) { return NAMES[k]; }).join(", ") + ". " + inc.text + (inc.trial ? " This was during the monitor's first days and is not counted." : "")));
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+    if (failures.length) {
+      var det = el("details");
+      det.appendChild(el("summary", null, "Every recorded check failure, as the monitor saw it (" + failures.length + ")"));
       var table = el("table");
       var thead = el("thead"); var hr = el("tr");
       ["When (Central)", "Check", "Page", "What came back"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
@@ -371,26 +584,35 @@
         tr.appendChild(el("td", null, NAMES[f.target] || f.target));
         tr.appendChild(el("td", { "class": "page" }, (last.url || (f.first && f.first.url) || "").replace(/^https:\/\//, "")));
         var what = [f.first && f.first.error, f.second && f.second.error].filter(Boolean);
-        tr.appendChild(el("td", null, what.length ? "First try: " + what[0] + (what[1] ? ". 15 seconds later: " + what[1] + "." : ".") : "Failed twice."));
+        var inMaint = inWindow(Date.parse(f.at), windows);
+        tr.appendChild(el("td", null, (what.length ? "First try: " + what[0] + (what[1] ? ". 15 seconds later: " + what[1] + "." : ".") : "Failed twice.") + (inMaint ? " During planned maintenance." : "")));
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
-      box.appendChild(table);
+      det.appendChild(table);
+      box.appendChild(det);
     }
-  }
 
-  // Minutes in a Central day that the monitor could have measured (from the first sample, up to the last record update).
-  function minutesInCentralDay(key, firstSample, now) {
-    var parts = key.split("-").map(Number);
-    var s = Date.UTC(parts[0], parts[1] - 1, parts[2]) - 12 * 3600000;
-    while (central(s).key !== key) s += 3600000;
-    while (central(s - 60000).key === key) s -= 60000;
-    var e = s + 20 * 3600000;
-    while (central(e).key === key) e += 3600000;
-    while (central(e - 60000).key !== key) e -= 60000;
-    var from = Math.max(s, Math.floor(firstSample / 60000) * 60000);
-    var to = Math.min(e, now);
-    return Math.max(0, Math.ceil((to - from) / 60000));
+    // Planned maintenance list: upcoming first, then this month's.
+    var mbox = document.getElementById("maintenance");
+    mbox.textContent = "";
+    var upcoming = windows.filter(function (w) { return w.end > now; });
+    var past = monthWindows.filter(function (w) { return w.end <= now; });
+    if (!upcoming.length && !past.length) {
+      mbox.appendChild(el("p", { "class": "muted" }, "No planned maintenance scheduled, and none in " + monthLabel + "."));
+    } else {
+      var ul2 = el("ul", { "class": "events" });
+      upcoming.concat(past.slice().reverse()).forEach(function (w) {
+        var li = el("li");
+        var top = el("div");
+        top.appendChild(el("span", { "class": "tag maint" }, w.end > now ? (w.start > now ? "Scheduled" : "In progress") : "Completed"));
+        top.appendChild(el("span", { "class": "ev-when" }, nb(noYear(w.start) + ", " + span(w.start, w.end) + " Central")));
+        li.appendChild(top);
+        li.appendChild(el("p", { "class": "ev-body" }, w.note.replace(/[.\s]*$/, ".") + (w.afterTheFact ? " Declared after the fact, on " + whenFmt.format(new Date(w.declaredAt)) + " Central." : " Announced " + whenFmt.format(new Date(w.declaredAt)) + " Central.")));
+        ul2.appendChild(li);
+      });
+      mbox.appendChild(ul2);
+    }
   }
 })();
 </script>
